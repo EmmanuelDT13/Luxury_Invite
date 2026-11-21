@@ -273,7 +273,7 @@ window.INVITACION = {
     transferencia: {
       titulo: "Transferencia",
       banco: "BBVA México",
-      titular: "Valentina Ruiz Cortés",
+      titular: "Emmanuel Dueñas",
       clabe: "012 320 00000000000 0",
       concepto: "Boda V&A"
     },
@@ -299,7 +299,7 @@ window.INVITACION = {
       { icono: "camara", titulo: "Comparte con nosotros", texto: "Usa nuestro hashtag para que podamos revivir cada momento." },
       { icono: "reloj",  titulo: "Puntualidad", texto: "Te pedimos llegar 20 minutos antes de la ceremonia." }
     ],
-    hashtag: "#ValentinaYAlejandro"
+    hashtag: "#EmmanuelYEstacy"
   },
 
   /* ---------- Confirmación de asistencia (RSVP por WhatsApp) ---------- */
