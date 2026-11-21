@@ -356,7 +356,7 @@ window.INVITACION = {
   /* ---------- Pie de página ---------- */
   creditos: {
     mostrar: true,
-    texto: "Invitación digital diseñada por Tu Estudio",
+    texto: "Invitación digital diseñada por Emmanuel y Estacy",
     url: ""
   }
 };
