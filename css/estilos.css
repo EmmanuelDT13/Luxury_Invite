@@ -678,7 +678,12 @@ body:not(.bloqueado) .progreso { opacity: 1; }
 /* Elementos con filtros costosos (relieve dorado, borde artesanal, sombras) en capa propia SOLO mientras
    su sección está en pantalla: se dibujan una vez y el brillo animado de al lado ya no los obliga a
    recalcularse en cada cuadro. Fuera de pantalla se libera la memoria. */
-#invitacion > section.en-vista :is(.foil, .marco-oval__svg, .filigrana, .lacre, .esquinero) { will-change: transform; }
+/* Nota: no se promueven elementos que tienen "filter" CSS propio (esquineros, textos dorados, lacre):
+   en Safari de iPhone, al salir y volver a pantalla, esas capas pueden quedar como un recuadro negro. */
+#invitacion > section.en-vista :is(.marco-oval__svg, .filigrana) { will-change: transform; }
+/* Galería: cada foto enmarcada es una capa mientras la galería está en pantalla; al deslizar,
+   la GPU solo escala/gira la imagen ya dibujada en lugar de repintar marco, perlas y textura. */
+.galeria-sec.en-vista .galeria__item { will-change: transform, opacity; }
 .rsvp.en-vista .rsvp__tarjeta::before { will-change: transform; }
 /* Portada: el papel de la tarjeta interior en su propia capa, y su brillo quieto mientras el sobre
    está cerrado (no se ve: queda dentro del sobre) */

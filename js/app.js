@@ -755,26 +755,48 @@
   function iniciarGaleria() {
     const pista = $(".galeria__pista"); if (!pista) return;
     const items = $$(".galeria__item", pista), puntos = $$(".galeria__puntos i");
-    let activo = 0, t = false;
+    let activo = 0, t = false, geo = [], ancho = 0;
+    const previo = items.map(() => ({ k: "", s: "" }));
+
+    // Las posiciones de las fotos solo cambian al redimensionar: se miden una vez, no en cada cuadro
+    const medirGeo = () => { ancho = pista.clientWidth; geo = items.map((it) => ({ c: it.offsetLeft + it.offsetWidth / 2, w: it.offsetWidth || 1 })); };
     const medir = () => {
       t = false;
-      const cx = pista.scrollLeft + pista.clientWidth / 2;
-      const offs = items.map((it) => (it.offsetLeft + it.offsetWidth / 2 - cx) / it.offsetWidth);
+      const cx = pista.scrollLeft + ancho / 2;
+      let nuevo = activo;
       items.forEach((it, i) => {
-        const off = offs[i];
-        it.style.setProperty("--k", Math.min(1, Math.abs(off)).toFixed(3));
-        it.style.setProperty("--s", clamp(off, -1, 1).toFixed(3));
-        if (Math.abs(off) < 0.5) activo = i;
+        const off = (geo[i].c - cx) / geo[i].w;
+        const k = Math.min(1, Math.abs(off)).toFixed(3), sg = clamp(off, -1, 1).toFixed(3);
+        // Solo se escribe lo que cambió (las fotos lejanas se quedan quietas sin tocar el DOM)
+        if (k !== previo[i].k) { it.style.setProperty("--k", k); previo[i].k = k; }
+        if (sg !== previo[i].s) { it.style.setProperty("--s", sg); previo[i].s = sg; }
+        if (Math.abs(off) < 0.5) nuevo = i;
       });
-      puntos.forEach((p, i) => p.classList.toggle("on", i === activo));
+      if (nuevo !== activo || !puntos[activo].classList.contains("on")) {
+        activo = nuevo;
+        puntos.forEach((p, i) => p.classList.toggle("on", i === activo));
+      }
     };
     pista.addEventListener("scroll", () => { if (!t) { t = true; requestAnimationFrame(medir); } }, { passive: true });
-    addEventListener("resize", medir);
-    const ir = (i) => { const it = items[clamp(i, 0, items.length - 1)]; pista.scrollTo({ left: it.offsetLeft - (pista.clientWidth - it.offsetWidth) / 2, behavior: "smooth" }); };
+    addEventListener("resize", () => { medirGeo(); medir(); });
+    const ir = (i) => { const g = geo[clamp(i, 0, items.length - 1)]; pista.scrollTo({ left: g.c - ancho / 2, behavior: "smooth" }); };
     $(".galeria__flecha--izq").addEventListener("click", () => ir(activo - 1));
     $(".galeria__flecha--der").addEventListener("click", () => ir(activo + 1));
     items.forEach((it, i) => it.addEventListener("click", () => (i === activo ? abrirVisor(i) : ir(i))));
-    medir();
+    medirGeo(); medir();
+
+    // Las fotos del carrusel se descargan y decodifican ANTES de llegar a la galería:
+    // al pulsar "siguiente" ya están listas (antes cada una empezaba a cargar al aparecer).
+    const imgs = $$("img", pista);
+    const adelantar = () => imgs.forEach((im) => {
+      im.loading = "eager";
+      const listo = () => { if (im.decode) im.decode().catch(() => {}); };
+      if (im.complete) listo(); else im.addEventListener("load", listo, { once: true });
+    });
+    if ("IntersectionObserver" in window) {
+      const io2 = new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) { io2.disconnect(); adelantar(); } }, { rootMargin: "1200px 0px" });
+      io2.observe(pista);
+    } else adelantar();
   }
 
   function abrirVisor(i) {
@@ -1056,7 +1078,10 @@
     // Re-render de SVG con texto una vez cargadas las fuentes (lacre)
     $$(".svg-defs text").forEach((t) => t.setAttribute("font-family", `'${FUENTES.grabada}', serif`));
 
-    $("#precarga").classList.add("fuera");
+    const pre = $("#precarga");
+    pre.classList.add("fuera");
+    // Al terminar de desvanecerse se elimina: sus animaciones infinitas seguían corriendo ocultas toda la visita
+    setTimeout(() => pre.remove(), 1200);
     await sleep(250);
     portada.classList.add("lista");
     // Mientras el invitado ve el sobre: se adelanta la foto principal y se empieza a cargar la música
