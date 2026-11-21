@@ -666,7 +666,10 @@
     $$("[data-fondo]").forEach((el) => fondos.observe(el));
 
     // Las animaciones continuas (brillo del foil, etc.) se pausan en secciones fuera de pantalla
-    const pausa = new IntersectionObserver((es) => es.forEach((e) => e.target.classList.toggle("en-pausa", !e.isIntersecting)), { rootMargin: "200px 0px" });
+    const pausa = new IntersectionObserver((es) => es.forEach((e) => {
+      e.target.classList.toggle("en-pausa", !e.isIntersecting);
+      e.target.classList.toggle("en-vista", e.isIntersecting);
+    }), { rootMargin: "200px 0px" });
     $$("#invitacion > section").forEach((el) => pausa.observe(el));
   }
 
@@ -861,19 +864,34 @@
       x: Math.random(), y: Math.random(), r: 0.5 + Math.random() * 1.7, v: 0.00004 + Math.random() * 0.00012,
       a: Math.random() * 6.28, tw: 0.4 + Math.random() * 1.4
     }));
-    const medir = () => { w = cv.clientWidth; h = cv.clientHeight; cv.width = w * dpr; cv.height = h * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0); };
+    let sucias = [];
+    const medir = () => {
+      if (cv.clientWidth === w && cv.clientHeight === h) return;   // no reasignar el lienzo si no cambió
+      w = cv.clientWidth; h = cv.clientHeight;
+      // En secciones muy altas se limita el tamaño interno del lienzo (~1.5 MP): son puntos de luz
+      // difuminados, así que la diferencia no se percibe y la GPU mueve mucha menos memoria por cuadro.
+      const d = Math.min(dpr, Math.sqrt(1.5e6 / Math.max(1, w * h)));
+      cv.width = Math.round(w * d); cv.height = Math.round(h * d); ctx.setTransform(d, 0, 0, d, 0, 0); sucias = [];
+    };
     let ult = 0;
     const cuadro = (t) => {
       if (vivo) raf = requestAnimationFrame(cuadro);
       if (t - ult < 32) return;            // ~30 fps: movimiento lento, imperceptible y la mitad de trabajo
       const paso = Math.min(3, (t - ult) / 16); ult = t;
-      ctx.clearRect(0, 0, w, h);
+      // Solo se borra donde hubo partículas (no el lienzo entero) y solo se dibujan las que están en pantalla:
+      // el resultado es idéntico, con una fracción del trabajo en secciones altas.
+      const top = cv.getBoundingClientRect().top, y0 = -top - 12, y1 = -top + innerHeight + 12;
+      for (let i = 0; i < sucias.length; i += 3) ctx.clearRect(sucias[i], sucias[i + 1], sucias[i + 2], sucias[i + 2]);
+      sucias.length = 0;
       for (const p of ps) {
         p.y -= p.v * 16 * paso; if (p.y < -0.03) { p.y = 1.03; p.x = Math.random(); }
         const x = (p.x + Math.sin(t / 4000 + p.a) * 0.012) * w, y = p.y * h;
+        if (y < y0 || y > y1) continue;
         const al = (noche ? 0.25 : 0.18) + (noche ? 0.55 : 0.4) * (0.5 + 0.5 * Math.sin(t / 900 * p.tw + p.a));
-        ctx.fillStyle = `rgba(${rgb},${al * 0.16})`; ctx.beginPath(); ctx.arc(x, y, p.r * 3.2, 0, 6.29); ctx.fill();
+        const R = p.r * 3.2;
+        ctx.fillStyle = `rgba(${rgb},${al * 0.16})`; ctx.beginPath(); ctx.arc(x, y, R, 0, 6.29); ctx.fill();
         ctx.fillStyle = `rgba(${rgb},${al})`; ctx.beginPath(); ctx.arc(x, y, p.r, 0, 6.29); ctx.fill();
+        sucias.push(x - R - 2, y - R - 2, 2 * R + 4);
       }
     };
     new IntersectionObserver(([e]) => {
