@@ -92,9 +92,12 @@
       if (ejes) l.onerror = () => { l.onerror = null; l.href = `https://fonts.googleapis.com/css2?family=${fam}&display=swap`; };
       D.head.appendChild(l);
     };
-    cargar(FUENTES.caligrafica);
-    cargar(FUENTES.grabada, "wght@400;500;600");
-    cargar(FUENTES.texto, "ital,wght@0,300;0,400;0,500;0,600;1,300;1,400;1,500");
+    // Normalmente js/arranque.js ya pidió las fuentes desde el <head>; esto es solo un respaldo
+    if (!$('link[data-fuentes]')) {
+      cargar(FUENTES.caligrafica);
+      cargar(FUENTES.grabada, "wght@400;500");
+      cargar(FUENTES.texto, "ital,wght@0,300;0,400;0,600;1,400");
+    }
 
     D.title = `${N.ella} ${N.conector || "&"} ${N.el} · ${(C.hero && C.hero.titulo) || "Nos casamos"}`;
     const tc = $('meta[name="theme-color"]'); if (tc) tc.content = COL.papel;
@@ -233,7 +236,7 @@
       <div class="contenedor">
         <p class="etiqueta" data-rev style="--d:.1s">${esc(H.sobreTitulo)}</p>
         <div class="hero__marco" data-rev="escala" style="--d:.15s">
-          <div class="hero__marco-par">${ORN.frameOval(esc(H.foto), { alt: `${ELLA} y ${EL}`, pos: esc(H.posicionFoto || "50% 30%") })}</div>
+          <div class="hero__marco-par" data-p>${ORN.frameOval(esc(H.foto), { alt: `${ELLA} y ${EL}`, pos: esc(H.posicionFoto || "50% 30%"), prioridad: true })}</div>
         </div>
         <h1 class="hero__nombres" data-rev style="--d:.4s">
           <span class="script foil escritura" style="--d:.6s">${ELLA}</span>
@@ -636,7 +639,15 @@
   let io;
   function iniciarRevelado() {
     io = new IntersectionObserver((es) => es.forEach((e) => {
-      if (e.isIntersecting) { e.target.classList.add("visible"); io.unobserve(e.target); }
+      if (!e.isIntersecting) return;
+      const el = e.target;
+      io.unobserve(el);
+      // Capa propia mientras dura la animación (desenfoque + movimiento en GPU) y se libera al terminar
+      el.style.willChange = "opacity, transform, filter";
+      requestAnimationFrame(() => el.classList.add("visible"));
+      const liberar = (ev) => { if (ev.target === el && ev.propertyName === "opacity") { el.style.willChange = ""; el.removeEventListener("transitionend", liberar); } };
+      el.addEventListener("transitionend", liberar);
+      setTimeout(() => (el.style.willChange = ""), 4500);
     }), { rootMargin: "0px 0px -10% 0px", threshold: 0.12 });
     $$("[data-rev]").forEach((el) => io.observe(el));
 
@@ -653,42 +664,62 @@
       im.src = el.dataset.fondo;
     }), { rootMargin: "900px 0px" });
     $$("[data-fondo]").forEach((el) => fondos.observe(el));
+
+    // Las animaciones continuas (brillo del foil, etc.) se pausan en secciones fuera de pantalla
+    const pausa = new IntersectionObserver((es) => es.forEach((e) => e.target.classList.toggle("en-pausa", !e.isIntersecting)), { rootMargin: "200px 0px" });
+    $$("#invitacion > section").forEach((el) => pausa.observe(el));
   }
 
   // Motor de scroll: progreso 0..1 por elemento (parallax, hilos, texto que se ilumina)
   const scrubs = [];
   let tic = false;
   function iniciarScroll() {
-    $$("[data-scrub]").forEach((el) => scrubs.push({ el, modo: el.dataset.scrub, p: -1 }));
+    // --p se escribe solo en los elementos que lo usan (no en toda la sección) para no recalcular
+    // estilos de cientos de nodos en cada cuadro de scroll.
+    const objetivos = (el) => {
+      const t = $$("[data-p], .hero .marco-oval__foto, .evento__foto img, .interludio__foto, .linea-tiempo__hilo i", el);
+      if (el.matches(".programa")) t.push(el);
+      return t;
+    };
+    $$("[data-scrub]").forEach((el) => scrubs.push({ el, modo: el.dataset.scrub, p: -1, t: objetivos(el) }));
     const barra = $(".progreso");
+    let alto = 0, vh = innerHeight;
+    const medirAlto = () => { vh = innerHeight; alto = D.documentElement.scrollHeight - vh; };
+    medirAlto();
+    if ("ResizeObserver" in window) new ResizeObserver(() => { medirAlto(); pedir(); }).observe($("#invitacion"));
     const actualizar = () => {
       tic = false;
-      const vh = innerHeight;
-      for (const s of scrubs) {
-        const r = s.el.getBoundingClientRect();
-        if (r.bottom < -200 || r.top > vh + 200) continue;
+      // 1) Solo lecturas
+      const lect = scrubs.map((s) => s.el.getBoundingClientRect());
+      const y = scrollY;
+      // 2) Solo escrituras
+      scrubs.forEach((s, i) => {
+        const r = lect[i];
+        if (r.bottom < -200 || r.top > vh + 200) return;
         let p;
         if (s.modo === "fijo") p = -r.top / Math.max(1, r.height - vh);
         else if (s.modo === "hilo") p = (vh * 0.62 - r.top) / r.height;
         else p = (vh - r.top) / (vh + r.height);
         p = clamp(p);
-        if (Math.abs(p - s.p) < 0.0004) continue;
+        if (Math.abs(p - s.p) < 0.0004) return;
         s.p = p;
-        s.el.style.setProperty("--p", p.toFixed(4));
+        const v = p.toFixed(4);
+        for (const t of s.t) t.style.setProperty("--p", v);
         if (s.el.dataset.accion === "manifiesto") manifiesto(s.el, p);
-      }
-      const max = D.documentElement.scrollHeight - vh;
-      barra.style.setProperty("--avance", max > 0 ? (scrollY / max).toFixed(4) : 0);
+      });
+      barra.style.setProperty("--avance", alto > 0 ? (y / alto).toFixed(4) : 0);
     };
     const pedir = () => { if (!tic) { tic = true; requestAnimationFrame(actualizar); } };
     addEventListener("scroll", pedir, { passive: true });
-    addEventListener("resize", pedir);
+    addEventListener("resize", () => { medirAlto(); pedir(); });
     actualizar();
   }
 
   function manifiesto(el, p) {
     if (!el._pal) { el._pal = $$(".palabra", el); el._cita = $(".manifiesto__cita", el); }
     const n = el._pal.length, lit = Math.round(clamp(p / 0.78) * n);
+    if (lit === el._lit) return;          // solo se toca el DOM cuando cambia el número de palabras
+    el._lit = lit;
     el._pal.forEach((w, i) => w.classList.toggle("on", i < lit));
     if (el._cita) el._cita.classList.toggle("on", p > 0.8);
   }
@@ -725,8 +756,9 @@
     const medir = () => {
       t = false;
       const cx = pista.scrollLeft + pista.clientWidth / 2;
+      const offs = items.map((it) => (it.offsetLeft + it.offsetWidth / 2 - cx) / it.offsetWidth);
       items.forEach((it, i) => {
-        const off = (it.offsetLeft + it.offsetWidth / 2 - cx) / it.offsetWidth;
+        const off = offs[i];
         it.style.setProperty("--k", Math.min(1, Math.abs(off)).toFixed(3));
         it.style.setProperty("--s", clamp(off, -1, 1).toFixed(3));
         if (Math.abs(off) < 0.5) activo = i;
@@ -830,22 +862,26 @@
       a: Math.random() * 6.28, tw: 0.4 + Math.random() * 1.4
     }));
     const medir = () => { w = cv.clientWidth; h = cv.clientHeight; cv.width = w * dpr; cv.height = h * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0); };
+    let ult = 0;
     const cuadro = (t) => {
+      if (vivo) raf = requestAnimationFrame(cuadro);
+      if (t - ult < 32) return;            // ~30 fps: movimiento lento, imperceptible y la mitad de trabajo
+      const paso = Math.min(3, (t - ult) / 16); ult = t;
       ctx.clearRect(0, 0, w, h);
       for (const p of ps) {
-        p.y -= p.v * 16; if (p.y < -0.03) { p.y = 1.03; p.x = Math.random(); }
+        p.y -= p.v * 16 * paso; if (p.y < -0.03) { p.y = 1.03; p.x = Math.random(); }
         const x = (p.x + Math.sin(t / 4000 + p.a) * 0.012) * w, y = p.y * h;
         const al = (noche ? 0.25 : 0.18) + (noche ? 0.55 : 0.4) * (0.5 + 0.5 * Math.sin(t / 900 * p.tw + p.a));
         ctx.fillStyle = `rgba(${rgb},${al * 0.16})`; ctx.beginPath(); ctx.arc(x, y, p.r * 3.2, 0, 6.29); ctx.fill();
         ctx.fillStyle = `rgba(${rgb},${al})`; ctx.beginPath(); ctx.arc(x, y, p.r, 0, 6.29); ctx.fill();
       }
-      if (vivo) raf = requestAnimationFrame(cuadro);
     };
     new IntersectionObserver(([e]) => {
       if (e.isIntersecting && !vivo) { vivo = true; medir(); raf = requestAnimationFrame(cuadro); }
       else if (!e.isIntersecting && vivo) { vivo = false; cancelAnimationFrame(raf); }
     }).observe(cv);
-    addEventListener("resize", () => vivo && medir());
+    let ancho = 0;
+    addEventListener("resize", () => { if (vivo && cv.clientWidth !== ancho) { ancho = cv.clientWidth; medir(); } });
   }
 
   /* ---------------- Lluvia de hojas de oro al abrir ---------------- */
@@ -874,7 +910,7 @@
         else { ctx.beginPath(); ctx.ellipse(0, 0, p.s * 0.6, p.s * 0.3, 0, 0, 6.29); ctx.fill(); }
         ctx.restore();
       }
-      if (e < 5600) requestAnimationFrame(cuadro); else ctx.clearRect(0, 0, w, h);
+      if (e < 5600) requestAnimationFrame(cuadro); else { cv.width = 0; cv.height = 0; }   // libera la memoria del lienzo
     };
     requestAnimationFrame(cuadro);
   }
@@ -886,7 +922,7 @@
     const btn = $("#musica");
     if (M.activa === false || !M.src) return;
     audio = new Audio(M.src);
-    audio.loop = true; audio.preload = "auto";
+    audio.loop = true; audio.preload = "none";
     btn.hidden = false;
     btn.innerHTML = `<span class="musica__barras" aria-hidden="true"><i></i><i></i><i></i><i></i></span>`;
     btn.addEventListener("click", () => (audio.paused ? sonar() : callar()));
@@ -929,6 +965,8 @@
     const portada = $("#portada"), sobre = $(".sobre", portada);
     sonar(true);
 
+    portada.classList.add("abriendo");
+    await new Promise(requestAnimationFrame);
     portada.classList.add("p-rompe");
     await sleep(REDUCIDO ? 50 : 620);
     portada.classList.add("p-solapa");
@@ -944,17 +982,20 @@
     const w0 = original.offsetWidth, h0 = original.offsetHeight;
     const vuelo = original.cloneNode(true);
     vuelo.classList.add("tarjeta-vuelo");
-    vuelo.style.cssText = `left:${r.left + r.width / 2 - w0 / 2}px;top:${r.top + r.height / 2 - h0 / 2}px;width:${w0}px;height:${h0}px;transform:rotate(-2deg);transition:none`;
+    const vw = innerWidth, vh = innerHeight;
+    const esc1 = Math.min((vw * 0.92) / w0, (vh * 0.62) / h0, 1.9);
+    const w1 = w0 * esc1, h1 = h0 * esc1;
+    // La tarjeta se maqueta UNA vez a su tamaño final y se anima solo con transform
+    // (escala + traslación en GPU) en lugar de cambiar left/top/width/height en cada cuadro.
+    vuelo.style.cssText = `left:${(vw - w1) / 2}px;top:${(vh - h1) / 2}px;width:${w1}px;height:${h1}px;transition:none;transform-origin:50% 50%;will-change:transform,opacity`;
+    const dx = r.left + r.width / 2 - vw / 2, dy = r.top + r.height / 2 - vh / 2;
     D.body.appendChild(vuelo);
     original.style.visibility = "hidden";
     portada.classList.add("p-sale");
 
-    const vw = innerWidth, vh = innerHeight;
-    const esc1 = Math.min((vw * 0.92) / w0, (vh * 0.62) / h0, 1.9);
-    const w1 = w0 * esc1, h1 = h0 * esc1;
     const anim = vuelo.animate([
-      { left: vuelo.style.left, top: vuelo.style.top, width: `${w0}px`, height: `${h0}px`, transform: "rotate(-2deg)" },
-      { left: `${(vw - w1) / 2}px`, top: `${(vh - h1) / 2}px`, width: `${w1}px`, height: `${h1}px`, transform: "rotate(0deg)" }
+      { transform: `translate(${dx}px, ${dy}px) scale(${1 / esc1}) rotate(-2deg)` },
+      { transform: "translate(0px, 0px) scale(1) rotate(0deg)" }
     ], { duration: REDUCIDO ? 10 : 1400, easing: "cubic-bezier(.65,0,.25,1)", fill: "forwards" });
     await anim.finished.catch(() => {});
     await sleep(REDUCIDO ? 0 : 900);
@@ -965,6 +1006,7 @@
     main.classList.add("activa"); main.removeAttribute("aria-hidden");
     D.body.classList.remove("bloqueado");
     iniciarRevelado();
+    $$(".polvo").forEach(polvo);
     confeti();
     $("#musica").classList.add("visible");
     const fuera = vuelo.animate([{ opacity: 1, transform: "scale(1)" }, { opacity: 0, transform: "scale(1.06)" }], { duration: REDUCIDO ? 10 : 1100, easing: "ease", fill: "forwards" });
@@ -987,7 +1029,6 @@
     iniciarGaleria();
     iniciarRSVP();
     iniciarMusica();
-    $$(".polvo").forEach(polvo);
 
     const portada = $("#portada");
     const fondo = P.fondo;
@@ -995,11 +1036,16 @@
     const [okFondo] = await Promise.all([precargar(fondo, 5000), fuentes, sleep(900)]);
     if (okFondo) $(".portada__fondo", portada).style.backgroundImage = `url("${fondo}")`;
     // Re-render de SVG con texto una vez cargadas las fuentes (lacre)
-    $$(".lacre text").forEach((t) => t.setAttribute("font-family", `'${FUENTES.grabada}', serif`));
+    $$(".svg-defs text").forEach((t) => t.setAttribute("font-family", `'${FUENTES.grabada}', serif`));
 
     $("#precarga").classList.add("fuera");
     await sleep(250);
     portada.classList.add("lista");
+    // Mientras el invitado ve el sobre: se adelanta la foto principal y se empieza a cargar la música
+    setTimeout(() => {
+      if (C.hero && C.hero.foto) precargar(C.hero.foto, 15000);
+      if (audio && !abierto) { audio.preload = "auto"; try { audio.load(); } catch (e) {} }
+    }, 600);
 
     if (P.mostrar === false || location.hash === "#sin-portada") { abrir(); return; }
     $(".sobre", portada).addEventListener("click", abrir);

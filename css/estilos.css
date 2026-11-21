@@ -653,3 +653,18 @@ body:not(.bloqueado) .progreso { opacity: 1; }
 }
 .portada.p-solapa .portada__para { opacity: 0; transform: translateY(-10px); transition: opacity .5s ease, transform .5s ease; }
 .hero__titulo, .tarjeta__pre, .calendario__mes { text-transform: uppercase; }
+
+/* ==========================================================================
+   RENDIMIENTO (no cambia nada visual)
+   ========================================================================== */
+/* Capas propias para lo que se anima: el navegador dibuja una vez y solo mueve la imagen en GPU,
+   en vez de recalcular desenfoques, filtros SVG y texturas en cada cuadro. */
+/* (solo mientras se abre el sobre; en reposo no se crean capas extra) */
+.portada.abriendo .sobre { will-change: translate, opacity; }
+.portada.abriendo .sobre__tarjeta, .portada.abriendo .lacre__mitad, .portada.abriendo .sobre__liston i { will-change: transform; }
+.hero__marco-par, .hero .marco-oval__foto, .evento__foto img { will-change: transform; }
+/* Animaciones continuas en pausa mientras su sección está fuera de pantalla */
+.en-pausa, .en-pausa *, .en-pausa *::before, .en-pausa *::after { animation-play-state: paused !important; }
+/* La invitación no se pinta debajo del sobre mientras está cerrado */
+.invitacion { visibility: hidden; }
+.invitacion.activa { visibility: visible; }

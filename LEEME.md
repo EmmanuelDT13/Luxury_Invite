@@ -7,6 +7,7 @@ invitacion-luxury/
 ├── index.html          ← estructura base (solo se editan las 4 líneas de vista previa)
 ├── config.js           ← TODO el contenido del cliente
 ├── css/estilos.css     ← diseño
+├── js/arranque.js      ← pide fuentes y foto del sobre desde el primer instante
 ├── js/ornamentos.js    ← marcos dorados, filigranas, lacre e iconos (SVG generado)
 ├── js/app.js           ← construcción de la invitación y animaciones
 └── assets/
@@ -60,3 +61,10 @@ WhatsApp no ejecuta JavaScript, así que el título, la descripción y la imagen
 - Las fotos de ejemplo vienen de Unsplash (licencia libre). Para clientes, usa sus fotos locales: así la carga es más rápida y no dependes de servicios externos.
 - La confirmación abre WhatsApp con el mensaje ya escrito; no requiere servidor.
 - Funciona en Chrome, Safari (iOS 15 o posterior), Edge y Firefox. Si el dispositivo tiene activado “reducir movimiento”, las animaciones se simplifican de forma automática.
+
+## Rendimiento: fotos y música
+
+Lo que más pesa en la carga son los archivos del cliente, no el código. Antes de publicar:
+
+- **Fotos:** 1600–2000 px por el lado largo (el retrato y las fotos de la historia bastan con 1200 px), en AVIF o WebP, idealmente < 300 KB cada una. Una foto directa del celular pesa 3–6 MB.
+- **Música:** MP3 a 128 kbps (o 96 kbps) y recortada a 2–3 minutos con bucle: de ~8 MB baja a ~2–3 MB.

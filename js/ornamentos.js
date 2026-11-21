@@ -207,6 +207,20 @@
 </svg>`;
   }
 
+  /* ---------------- registro de piezas reutilizables ----------------
+     Cada ornamento se dibuja UNA sola vez dentro de <defs> y se reutiliza con <use>.
+     El resultado visual es idéntico, pero el HTML pesa una fracción y el navegador
+     procesa mucho menos. */
+  const REGISTRO = {};
+  function reutilizar(id, contenido) {
+    if (!REGISTRO[id]) {
+      REGISTRO[id] = `<g id="${id}">${contenido()}</g>`;
+      const defsEl = typeof document !== "undefined" && document.querySelector(".svg-defs defs");
+      if (defsEl) defsEl.insertAdjacentHTML("beforeend", REGISTRO[id]);
+    }
+    return `<use href="#${id}"/>`;
+  }
+
   /* ---------------- piezas públicas ---------------- */
 
   // Marco ovalado dorado con cresta, perlas y rosetas
@@ -215,11 +229,10 @@
     const W = 400, H = 560, cx = 200, cy = 300, rx = 148, ry = 200;
     const e = (dr, extra) => `<ellipse cx="${cx}" cy="${cy}" rx="${rx + dr}" ry="${ry + dr}" ${extra}/>`;
     const crestTop = o.sencillo ? 0.62 : 1.05;
-    const svg = `
-<svg class="marco-oval__svg" viewBox="0 0 ${W} ${H}" aria-hidden="true">
+    const dibujo = () => `
   ${e(0, 'fill="url(#g-vineta)"')}
   <g filter="url(#f-dorado)" fill="none">
-    ${e(21.5, `stroke="${'url(#g-oro)'}" stroke-width="1.4"`)}
+    ${e(21.5, `stroke="url(#g-oro)" stroke-width="1.4"`)}
     ${e(15, 'style="stroke:var(--oro-profundo)" stroke-width="9"')}
     ${e(15, 'stroke="url(#g-oro)" stroke-width="9" stroke-dasharray="1.7 2.1"')}
     ${e(8, 'stroke="url(#g-oro)" stroke-width="5.5"')}
@@ -230,16 +243,17 @@
     <g transform="translate(${cx} ${cy - ry - 21}) scale(${crestTop})">${crestPaths({ shell: true })}</g>
     <g transform="translate(${cx} ${cy + ry + 21}) scale(${o.sencillo ? 0.5 : 0.72} -${o.sencillo ? 0.5 : 0.72})">${crestPaths({ shell: !o.sencillo })}</g>
     ${o.sencillo ? "" : `<g transform="translate(${cx - rx - 21} ${cy})">${rosette(15)}</g><g transform="translate(${cx + rx + 21} ${cy})">${rosette(15)}</g>`}
-  </g>
-</svg>`;
+  </g>`;
+    const svg = `<svg class="marco-oval__svg" viewBox="0 0 ${W} ${H}" aria-hidden="true">${reutilizar(o.sencillo ? "orn-oval-s" : "orn-oval", dibujo)}</svg>`;
     return `<div class="marco-oval${o.sencillo ? " marco-oval--sencillo" : ""}">
-      <div class="marco-oval__ventana"><img class="marco-oval__foto" src="${src}" alt="${o.alt}" loading="lazy" decoding="async" style="object-position:${o.pos}"></div>
+      <div class="marco-oval__ventana"><img class="marco-oval__foto" src="${src}" alt="${o.alt}" loading="${o.prioridad ? "eager" : "lazy"}"${o.prioridad ? ' fetchpriority="high"' : ""} decoding="async" style="object-position:${o.pos}"></div>
       ${svg}
     </div>`;
   }
 
   // Filigrana divisoria horizontal (dorada o en relieve)
   function divider(cls) {
+    const dibujo = () => {
     let half = "";
     half += scrollArm({ x: -10, y: 0 }, { x: -40, y: -2 }, { x: -70, y: -14 }, { x: -96, y: -6 }, { r: 7, w: 2.2, s: -1, ball: 1.2 });
     half += scrollArm({ x: -12, y: 2 }, { x: -34, y: 10 }, { x: -56, y: 14 }, { x: -70, y: 6 }, { r: 4.6, w: 1.6, s: 1, ball: 1 });
@@ -248,11 +262,14 @@
     half += circ(-138, 0, 1.3);
     let d = both(half);
     d += `<path d="${leaf({ x: 0, y: -2 }, { x: 0, y: -18 }, 3.2, 0)}${leaf({ x: 0, y: 2 }, { x: 0, y: 14 }, 2.6, 0)}${leaf({ x: -2, y: 0 }, { x: -12, y: 0 }, 2.2, 0)}${leaf({ x: 2, y: 0 }, { x: 12, y: 0 }, 2.2, 0)}${circ(0, 0, 2.6)}"/>`;
-    return `<svg class="filigrana ${cls || ""}" viewBox="-145 -30 290 50" aria-hidden="true"><g fill="url(#g-oro)" filter="url(#f-dorado)">${d}</g></svg>`;
+    return `<g fill="url(#g-oro)" filter="url(#f-dorado)">${d}</g>`;
+    };
+    return `<svg class="filigrana ${cls || ""}" viewBox="-145 -30 290 50" aria-hidden="true">${reutilizar("orn-div", dibujo)}</svg>`;
   }
 
   // Esquinero en relieve (tono sobre tono)
   function corner() {
+    const dibujo = () => {
     let a = "";
     a += scrollArm({ x: 8, y: 8 }, { x: 60, y: 6 }, { x: 110, y: 12 }, { x: 150, y: 30 }, { r: 11, w: 3.4, s: 1, ball: 2 });
     a += scrollArm({ x: 14, y: 16 }, { x: 46, y: 30 }, { x: 70, y: 40 }, { x: 92, y: 36 }, { r: 7, w: 2.2, s: -1, ball: 1.4 });
@@ -265,7 +282,9 @@
       const ang = (20 + i * 8.3) * Math.PI / 180, L = 48 - Math.abs(i - 3) * 5;
       fan += leaf({ x: 10, y: 10 }, { x: 10 + Math.cos(ang) * L, y: 10 + Math.sin(ang) * L }, 4, (i - 3) * 0.8);
     }
-    return `<svg class="esquinero" viewBox="0 0 200 200" aria-hidden="true"><g fill="currentColor">${sym}<path d="${fan}"/><path d="${circ(12, 12, 6)}"/></g></svg>`;
+    return `<g fill="currentColor">${sym}<path d="${fan}"/><path d="${circ(12, 12, 6)}"/></g>`;
+    };
+    return `<svg class="esquinero" viewBox="0 0 200 200" aria-hidden="true">${reutilizar("orn-esq", dibujo)}</svg>`;
   }
 
   // Lacre con monograma (mapa de alturas)
@@ -288,6 +307,7 @@
   }
 
   function seal(iniciales, fuente, cls) {
+    const dibujo = () => {
     const [a, b] = iniciales;
     let beads = "";
     for (let i = 0; i < 36; i++) {
@@ -300,7 +320,7 @@
       const lp = (tt, side) => leaf({ x: 100 + 46 * Math.cos(tt), y: 100 + 46 * Math.sin(tt) }, { x: 100 + 46 * Math.cos(tt + side * 0.2) + 5 * Math.cos(tt), y: 100 + 46 * Math.sin(tt + side * 0.2) + 5 * Math.sin(tt) }, 2.3, 0);
       laurel += lp(t + Math.PI, -1) + lp(t2 + Math.PI, 1);
     }
-    return `<svg class="lacre ${cls || ""}" viewBox="0 0 200 200" aria-hidden="true">
+    return `
       <g filter="url(#f-lacre)">
         <path d="${sealBlob(13)}" fill="#8e8e8e"/>
         <circle cx="100" cy="100" r="71" fill="none" stroke="#b9b9b9" stroke-width="8"/>
@@ -309,7 +329,9 @@
         <path d="${laurel}" fill="#9a9a9a"/>
         <text x="100" y="${b ? 113 : 120}" text-anchor="middle" font-family="'${fuente}', serif" font-size="${b ? 40 : 58}" letter-spacing="1" fill="#d8d8d8">${a}${b ? `<tspan font-size="24" dy="-4" dx="2" font-style="italic" font-family="'Cormorant Garamond', serif">&amp;</tspan><tspan dy="4" dx="2">${b}</tspan>` : ""}</text>
       </g>
-    </svg>`;
+    `;
+    };
+    return `<svg class="lacre ${cls || ""}" viewBox="0 0 200 200" aria-hidden="true">${reutilizar("orn-lacre", dibujo)}</svg>`;
   }
 
   /* ---------------- iconos de línea ---------------- */
