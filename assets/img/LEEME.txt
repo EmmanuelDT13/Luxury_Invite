@@ -1,0 +1,1 @@
+Coloca aquí las fotos del cliente (JPG, 1600-2000 px, < 400 KB) y referencia su ruta en config.js, por ejemplo: assets/img/hero.jpg
