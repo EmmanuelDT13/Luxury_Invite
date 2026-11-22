@@ -107,7 +107,7 @@ window.INVITACION = {
 
   /* ---------- Primera vista ---------- */
   hero: {
-    foto: "assets/img/novios_12.jpeg",
+    foto: "assets/img/novios_15.jpeg",
     sobreTitulo: "Junto a nuestras familias",
     titulo: "Nos casamos",
     frase: "y queremos compartir este día contigo"
@@ -131,19 +131,19 @@ window.INVITACION = {
         fecha: "2018",
         titulo: "El primer encuentro",
         texto: "Una tarde de lluvia en Guadalajara, un café compartido por error y una conversación que duró hasta que cerraron el lugar.",
-        foto: "assets/img/hands.avif"
+        foto: "assets/img/novios_14.jpeg"
       },
       {
         fecha: "2021",
         titulo: "Un hogar, dos sueños",
         texto: "Aprendimos que el amor también se construye en lo cotidiano: en las mañanas tranquilas y en los viajes que nos cambiaron.",
-        foto: "assets/img/novios_08.jpeg"
+        foto: "assets/img/novios_15.jpeg"
       },
       {
         fecha: "2026",
         titulo: "La pregunta",
         texto: "Frente al mar, al atardecer, con el corazón latiendo fuerte. La respuesta fue la palabra más bonita: sí.",
-        foto: "assets/img/rings.avif"
+        foto: "assets/img/novios_14.jpeg"
       }
     ]
   },
@@ -152,13 +152,13 @@ window.INVITACION = {
   // posicion (opcional): qué parte de la foto se prioriza al recortar, p. ej. "50% 30%" o "center bottom"
   interludios: [
     {
-      foto: "assets/img/novios_02.jpeg",
+      foto: "assets/img/novios_14.jpeg",
       posicion: "50% 60%",
       frase: "Dos almas, un solo destino"
     },
     {
-      foto: "assets/img/novios_13.jpeg",
-      posicion: "center top",
+      foto: "assets/img/novios_15.jpeg",
+      posicion: "center",
       frase: "Lo mejor de nuestra historia apenas comienza"
     }
   ],
@@ -252,12 +252,12 @@ window.INVITACION = {
     etiqueta: "Momentos",
     titulo: "Nuestra galería",
     fotos: [
-      "assets/img/novios_03.jpeg",
-      "assets/img/no_faces.avif",
-      "assets/img/rings_02.avif",
-      "assets/img/hands_02.avif",
-      "assets/img/flowers.avif",
-      "assets/img/novios_07.jpeg"
+      "assets/img/novios_14.jpeg",
+      "assets/img/novios_15.jpeg",
+      "assets/img/novios_14.jpeg",
+      "assets/img/novios_15.jpeg",
+      "assets/img/novios_14.jpeg",
+      "assets/img/novios_15.jpeg"
     ]
   },
 
@@ -319,7 +319,7 @@ window.INVITACION = {
 
   /* ---------- Cierre ---------- */
   cierre: {
-    foto: "assets/img/novios_10.jpeg",
+    foto: "assets/img/novios_14.jpeg",
     frase: "Gracias por ser parte de nuestra historia",
     texto: "Te esperamos para celebrar el amor, la familia y el comienzo de nuestra vida juntos.",
     firma: "Con amor,"
