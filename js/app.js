@@ -19,7 +19,7 @@
   /* ---------------- Datos base ---------------- */
   const COL = Object.assign({
     papel: "#F7F2E9", papelOscuro: "#ECE3D2", tinta: "#3A3026", tintaSuave: "#76695A",
-    oroProfundo: "#8C6A2F", oro: "#B8924A", oroClaro: "#E2C88A", oroBrillo: "#F7E9BF", nocturno: "#1E1813"
+    oroProfundo: "#5C4A28", oro: "#A58C5A", oroClaro: "#C9B07C", oroBrillo: "#E8D9B0", nocturno: "#1E1813"
   }, (C.tema && C.tema.colores) || {});
   const FUENTES = Object.assign({ caligrafica: "Pinyon Script", grabada: "Cinzel", texto: "Cormorant Garamond" }, (C.tema && C.tema.fuentes) || {});
   const T = Object.assign({
@@ -52,6 +52,7 @@
   const FI = (C.fecha && C.fecha.iso) || "2030-01-01T17:00:00-06:00";
   const F = partes(FI);
   const pad = (n) => String(n).padStart(2, "0");
+  const hexRgb = (h) => { const m = /^#?([\da-f]{2})([\da-f]{2})([\da-f]{2})/i.exec(h || "") || [0, "b8", "92", "4a"]; return [1, 2, 3].map((i) => parseInt(m[i], 16)).join(","); };
   const fechaLarga = (p) => `${p.d} de ${MESES[p.mo - 1]} de ${p.y}`;
   const fechaCaps = `${DIAS[F.dow]} · ${F.d} · ${MESES[F.mo - 1]} · ${F.y}`.toUpperCase();
 
@@ -101,7 +102,7 @@
 
     D.title = `${N.ella} ${N.conector || "&"} ${N.el} · ${(C.hero && C.hero.titulo) || "Nos casamos"}`;
     const tc = $('meta[name="theme-color"]'); if (tc) tc.content = COL.papel;
-    D.body.insertAdjacentHTML("afterbegin", ORN.defs(Object.assign({}, COL, { lacre: P.colorLacre || "#C39A4F" })));
+    D.body.insertAdjacentHTML("afterbegin", ORN.defs(Object.assign({}, COL, { lacre: P.colorLacre || "#A88B56", relieve: (C.tema && C.tema.relieve) || {} })));
     $(".precarga__mono").textContent = INICIALES.join(" · ");
   }
 
@@ -235,8 +236,10 @@
       <canvas class="polvo" data-polvo="claro"></canvas>
       <div class="contenedor">
         <p class="etiqueta" data-rev style="--d:.1s">${esc(H.sobreTitulo)}</p>
-        <div class="hero__marco" data-rev="escala" style="--d:.15s">
-          <div class="hero__marco-par" data-p>${ORN.frameOval(esc(H.foto), { alt: `${ELLA} y ${EL}`, pos: esc(H.posicionFoto || "50% 30%"), prioridad: true })}</div>
+        <div class="hero__marco${(H.marco || "rectangular") === "oval" ? "" : " hero__marco--rect"}" data-rev="escala" style="--d:.15s">
+          <div class="hero__marco-par" data-p>${(H.marco || "rectangular") === "oval"
+            ? ORN.frameOval(esc(H.foto), { alt: `${ELLA} y ${EL}`, pos: esc(H.posicionFoto || "50% 30%"), prioridad: true })
+            : ORN.framePhoto(esc(H.foto), { variante: "retrato", alt: `${ELLA} y ${EL}`, pos: esc(H.posicionFoto || "50% 30%"), prioridad: true })}</div>
         </div>
         <h1 class="hero__nombres" data-rev style="--d:.4s">
           <span class="script foil escritura" style="--d:.6s">${ELLA}</span>
@@ -271,21 +274,65 @@
     </section>`;
   };
 
+  // Normaliza los medios de un capítulo: acepta "foto" (compatibilidad), "fotos", "videos" o "medios"
+  const RX_VIDEO = /\.(mp4|webm|mov|m4v)(\?|#|$)/i;
+  function mediosDe(c) {
+    let m = [].concat(c.medios || [], c.fotos || [], c.videos || []);
+    if (!m.length && c.foto) m = [c.foto];
+    return m.map((x) => (typeof x === "string" ? (RX_VIDEO.test(x) ? { video: x } : { foto: x }) : x))
+      .filter((x) => x && (x.foto || x.video || x.youtube));
+  }
+  function htmlVideo(v, titulo) {
+    const H = C.historia || {};
+    const auto = (v.reproduccion || H.reproduccionVideos || "manual") === "auto";
+    const poster = v.poster || (v.youtube ? `https://i.ytimg.com/vi/${encodeURIComponent(v.youtube)}/hqdefault.jpg` : "");
+    let dentro;
+    if (v.youtube) {
+      // YouTube se carga solo al tocar: hasta entonces es una imagen ligera (sin el reproductor de ~1 MB)
+      dentro = `<div class="video video--yt" data-yt="${esc(v.youtube)}">
+        <img class="marco-rect__foto" src="${esc(poster)}" alt="${esc(v.titulo || titulo)}" loading="lazy" decoding="async">
+        <button class="video__play" type="button" aria-label="Reproducir video">${ICON("play")}</button></div>`;
+    } else {
+      const src = esc(v.video) + (poster ? "" : "#t=0.1");
+      dentro = `<div class="video${auto ? " video--auto" : ""}">
+        <video class="marco-rect__video" playsinline preload="none" ${auto ? "muted loop" : ""} ${poster ? `poster="${esc(poster)}"` : ""} data-src="${src}" aria-label="${esc(v.titulo || titulo)}"></video>
+        ${auto ? "" : `<button class="video__play" type="button" aria-label="Reproducir video">${ICON("play")}</button>`}</div>`;
+    }
+    return `<div class="capitulo__video">${ORN.frameRect(dentro, { variante: "video" })}</div>`;
+  }
+
   S.historia = () => {
     const H = C.historia || {};
-    const caps = (H.capitulos || []).map((c) => `
-      <article class="capitulo" data-rev>
-        <div class="capitulo__foto">${ORN.frameOval(esc(c.foto), { sencillo: true, alt: esc(c.titulo), pos: esc(c.posicionFoto || "50% 40%") })}</div>
+    const marcoFotos = H.marcoFotos || "oval";
+    const caps = (H.capitulos || []).map((c) => {
+      const medios = mediosDe(c);
+      const nFotos = medios.filter((m) => m.foto).length;
+      const hayVideo = medios.some((m) => m.video || m.youtube);
+      // Con video: los videos van primero (protagonistas) y después las fotos
+      const videosHtml = medios.filter((m) => !m.foto).map((m) => htmlVideo(m, c.titulo)).join("");
+      const items = medios.filter((m) => m.foto).map((m) => {
+        const alt = esc(m.alt || c.titulo), pos = esc(m.posicion || c.posicionFoto || "50% 40%");
+        const marco = (m.marco || marcoFotos) === "rectangular"
+          ? ORN.framePhoto(esc(m.foto), { variante: "foto", alt, pos })
+          : ORN.frameOval(esc(m.foto), { sencillo: true, alt, pos });
+        return `<div class="capitulo__foto">${marco}</div>`;
+      }).join("");
+      const clases = ["capitulo", hayVideo ? "capitulo--video" : "", hayVideo && !nFotos ? "capitulo--solo-video" : "", nFotos > 1 ? "capitulo--varias" : ""].join(" ").replace(/\s+/g, " ").trim();
+      return `
+      <article class="${clases}" data-rev${c.fondo ? ` data-fondo-cap="${esc(c.fondo)}" style="--fondo-cap:${esc(c.fondo)}"` : ""}>
+        ${videosHtml ? `<div class="capitulo__videos">${videosHtml}</div>` : ""}
+        ${items ? `<div class="capitulo__medios">${items}</div>` : ""}
         <div class="capitulo__texto">
           <span class="capitulo__fecha">${esc(c.fecha)}</span>
           <h3 class="capitulo__titulo script foil escritura">${esc(c.titulo)}</h3>
           <p>${esc(c.texto)}</p>
         </div>
-      </article>`).join("");
+      </article>`;
+    }).join("");
     return `
     <section class="seccion historia" id="historia">
       ${esquinas()}
-      <div class="contenedor" style="max-width:980px">
+      <div class="contenedor" style="max-width:1040px">
         ${encabezado(H.etiqueta, H.titulo)}
         <div class="linea-tiempo" data-scrub="hilo"><div class="linea-tiempo__hilo"><i></i></div>${caps}</div>
       </div>
@@ -680,7 +727,7 @@
     // --p se escribe solo en los elementos que lo usan (no en toda la sección) para no recalcular
     // estilos de cientos de nodos en cada cuadro de scroll.
     const objetivos = (el) => {
-      const t = $$("[data-p], .hero .marco-oval__foto, .evento__foto img, .interludio__foto, .linea-tiempo__hilo i", el);
+      const t = $$("[data-p], .hero .marco-oval__foto, .hero .marco-rect__foto, .evento__foto img, .interludio__foto, .linea-tiempo__hilo i", el);
       if (el.matches(".programa")) t.push(el);
       return t;
     };
@@ -823,6 +870,87 @@
     mostrar(); v.hidden = false; $(".visor__cerrar", v).focus();
   }
 
+  /* Fondo de la historia: cada capítulo puede tener su color y entre uno y otro hay un degradado
+     largo y suave. Se calcula UNA vez como un solo degradado del fondo de la sección (sin capas extra)
+     y solo se recalcula si cambia la altura (fuentes, fotos, rotación del teléfono). */
+  function iniciarFondosHistoria() {
+    const sec = $(".historia"); if (!sec) return;
+    const caps = $$(".capitulo", sec);
+    if (!caps.some((c) => c.dataset.fondoCap)) return;
+    const H = C.historia || {};
+    const base = H.fondo || getComputedStyle(D.documentElement).getPropertyValue("--papel").trim() || COL.papel;
+    const D2 = Math.max(0, +H.difuminado || 380) / 2;
+    let ultimo = "";
+    const pintar = () => {
+      const top0 = sec.getBoundingClientRect().top;
+      const r = caps.map((c) => { const b = c.getBoundingClientRect(); return { t: b.top - top0, b: b.bottom - top0, col: c.dataset.fondoCap || base }; });
+      const stops = [`${base} 0px`];
+      let prev = base;
+      r.forEach((c, i) => {
+        const limite = i === 0 ? c.t - 40 : (r[i - 1].b + c.t) / 2;
+        if (c.col !== prev) stops.push(`${prev} ${Math.round(limite - D2)}px`, `${c.col} ${Math.round(limite + D2)}px`);
+        prev = c.col;
+      });
+      stops.push(`${prev} 100%`);
+      const fondo = `var(--grano), linear-gradient(180deg, ${stops.join(", ")})`;
+      if (fondo !== ultimo) { sec.style.backgroundImage = fondo; ultimo = fondo; }
+    };
+    pintar();
+    if ("ResizeObserver" in window) { let tt = 0; new ResizeObserver(() => { cancelAnimationFrame(tt); tt = requestAnimationFrame(pintar); }).observe(sec); }
+  }
+
+  /* Videos de los capítulos: no se descarga nada hasta que hacen falta.
+     · manual: póster + botón dorado; al tocar se carga y reproduce (con controles).
+     · auto:   silenciado y en bucle solo mientras está en pantalla; se pausa al salir.
+     Mientras un video suena, la música de fondo se pausa y vuelve al terminar o pausar. */
+  function iniciarVideos() {
+    const vids = $$(".capitulo__video");
+    if (!vids.length) return;
+    const pausarMusica = !(C.historia && C.historia.pausarMusicaConVideo === false);
+    let musicaPausadaPorVideo = false;
+    const cargar = (v) => { if (v && !v.src && v.dataset.src) { v.src = v.dataset.src; } };
+    const silenciarMusica = () => { if (pausarMusica && audio && !audio.paused) { callar(); musicaPausadaPorVideo = true; } };
+    const reanudarMusica = () => { if (musicaPausadaPorVideo && !$$("video").some((x) => !x.paused && !x.muted)) { musicaPausadaPorVideo = false; sonar(); } };
+
+    vids.forEach((cont) => {
+      const v = $("video", cont), yt = $(".video--yt", cont), btn = $(".video__play", cont);
+      if (yt && btn) {
+        btn.addEventListener("click", () => {
+          const id = encodeURIComponent(yt.dataset.yt);
+          yt.innerHTML = `<iframe src="https://www.youtube-nocookie.com/embed/${id}?autoplay=1&playsinline=1&rel=0&modestbranding=1" title="Video" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen></iframe>`;
+          silenciarMusica();
+        });
+        return;
+      }
+      if (!v) return;
+      if (btn) {
+        btn.addEventListener("click", () => {
+          cargar(v); v.controls = true; btn.hidden = true;
+          const pr = v.play(); if (pr && pr.catch) pr.catch(() => {});
+        });
+        v.addEventListener("play", () => { if (!v.muted) silenciarMusica(); });
+        v.addEventListener("volumechange", () => { if (!v.muted && !v.paused) silenciarMusica(); });
+        ["pause", "ended"].forEach((ev) => v.addEventListener(ev, reanudarMusica));
+      }
+    });
+
+    // Precarga ligera (solo metadatos / primer cuadro) al acercarse
+    const cerca = new IntersectionObserver((es) => es.forEach((e) => {
+      if (!e.isIntersecting) return;
+      cerca.unobserve(e.target);
+      const v = $("video", e.target);
+      if (v && !v.poster && v.preload === "none") { v.preload = "metadata"; cargar(v); }
+    }), { rootMargin: "400px 0px" });
+    // Reproducción automática (modo "auto") solo mientras al menos la mitad está en pantalla
+    const vista = new IntersectionObserver((es) => es.forEach((e) => {
+      const v = $("video", e.target); if (!v) return;
+      const auto = !!e.target.querySelector(".video--auto");
+      if (auto && e.intersectionRatio >= 0.5) { cargar(v); const pr = v.play(); if (pr && pr.catch) pr.catch(() => {}); }
+      else if (!v.paused && (auto || !e.isIntersecting)) v.pause();
+    }), { threshold: [0, 0.5] });
+    vids.forEach((cont) => { cerca.observe(cont); vista.observe(cont); });
+  }
+
   // Avisos
   let avisoT;
   function aviso(txt) {
@@ -879,7 +1007,7 @@
   function polvo(cv) {
     if (REDUCIDO) return;
     const ctx = cv.getContext("2d"), noche = cv.dataset.polvo === "noche";
-    const rgb = noche ? "247,233,191" : "184,146,74";
+    const rgb = hexRgb(noche ? COL.oroBrillo : COL.oro);
     const dpr = Math.min(devicePixelRatio || 1, 2);
     let w = 0, h = 0, raf = 0, vivo = false;
     const ps = Array.from({ length: noche ? 48 : 30 }, () => ({
@@ -1046,6 +1174,7 @@
     main.classList.add("activa"); main.removeAttribute("aria-hidden");
     D.body.classList.remove("bloqueado");
     iniciarRevelado();
+    iniciarFondosHistoria();
     $$(".polvo").forEach(polvo);
     confeti();
     $("#musica").classList.add("visible");
@@ -1067,6 +1196,7 @@
     iniciarScroll();
     iniciarCuenta();
     iniciarGaleria();
+    iniciarVideos();
     iniciarRSVP();
     iniciarMusica();
 

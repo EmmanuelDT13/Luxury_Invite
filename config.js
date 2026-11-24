@@ -42,11 +42,19 @@ window.INVITACION = {
       papelOscuro:  "#ECE3D2",   // marfil sombreado
       tinta:        "#3A3026",   // texto principal
       tintaSuave:   "#76695A",   // texto secundario
-      oroProfundo:  "#8C6A2F",
-      oro:          "#B8924A",
-      oroClaro:     "#E2C88A",
-      oroBrillo:    "#F7E9BF",
+      // Oro antiguo (antique gold): marcos, ornamentos, textos dorados y botones
+      oroProfundo:  "#5C4A28",   // sombras y huecos del tallado
+      oro:          "#A58C5A",   // tono medio
+      oroClaro:     "#C9B07C",
+      oroBrillo:    "#E8D9B0",   // brillos
       nocturno:     "#1E1813"    // secciones oscuras (cuenta regresiva y cierre)
+    },
+    // Relieve de marcos y ornamentos (1 = valor de diseño; sube o baja con cuidado, p. ej. 0.7 – 1.4)
+    relieve: {
+      profundidad: 1,          // qué tan marcado es el tallado
+      brillo: 1,               // intensidad de los brillos metálicos
+      patina: 1,               // oscurecimiento en los bordes del grabado (0 = sin pátina)
+      colorPatina: "#3A2A12"
     },
     fuentes: {
       // Cualquier fuente de Google Fonts (escribe el nombre exacto)
@@ -91,7 +99,7 @@ window.INVITACION = {
     colorSobre: "#F3ECE0",
     colorForro: "#E7DABF",
     colorListon: "#EEE6D6",
-    colorLacre: "#C39A4F"
+    colorLacre: "#A88B56"
   },
 
   /* ---------- Invitados (personalización por enlace) ---------- */
@@ -108,6 +116,8 @@ window.INVITACION = {
   /* ---------- Primera vista ---------- */
   hero: {
     foto: "assets/img/novios_15.jpeg",
+    marco: "rectangular",      // "rectangular" (marco barroco imponente) u "oval"
+    posicionFoto: "50% 30%",   // qué parte de la foto se prioriza al recortar
     sobreTitulo: "Junto a nuestras familias",
     titulo: "Nos casamos",
     frase: "y queremos compartir este día contigo"
@@ -122,28 +132,44 @@ window.INVITACION = {
     autorCita: "1 Corintios 13"
   },
 
-  /* ---------- Nuestra historia (línea del tiempo) ---------- */
+  /* ---------- Nuestra historia (línea del tiempo) ----------
+     Cada capítulo admite "medios": una lista de fotos y/o videos, en el orden deseado.
+       • Foto:   "assets/img/foto.jpg"   o   { foto: "assets/img/foto.jpg", posicion: "50% 30%" }
+       • Video:  { video: "assets/video/clip.mp4", poster: "assets/img/portada-video.jpg" }
+                 (opcional: reproduccion: "auto" → silenciado y en bucle mientras se ve)
+       • YouTube:{ youtube: "ID_DEL_VIDEO" }   (el reproductor solo se carga al tocar)
+     Fotos: máximo 2 por fila, todas del mismo tamaño. Videos: uno por fila, con marco horizontal
+     y protagonismo (van primero en su capítulo).
+     "fondo" (opcional): color del capítulo; entre capítulos se difumina suavemente. */
   historia: {
     etiqueta: "Capítulo a capítulo",
     titulo: "Nuestra historia",
+    marcoFotos: "oval",          // "oval" o "rectangular"
+    difuminado: 380,             // px de transición suave entre colores de capítulos
+    reproduccionVideos: "manual",// "manual" (botón dorado) o "auto" (silenciado al verse)
+    pausarMusicaConVideo: true,  // la música de fondo se pausa mientras suena un video
     capitulos: [
       {
         fecha: "2018",
         titulo: "El primer encuentro",
         texto: "Una tarde de lluvia en Guadalajara, un café compartido por error y una conversación que duró hasta que cerraron el lugar.",
-        foto: "assets/img/novios_14.jpeg"
+        medios: ["assets/img/novios_14.jpeg"]
       },
       {
         fecha: "2021",
         titulo: "Un hogar, dos sueños",
         texto: "Aprendimos que el amor también se construye en lo cotidiano: en las mañanas tranquilas y en los viajes que nos cambiaron.",
-        foto: "assets/img/novios_15.jpeg"
+        medios: ["assets/img/novios_15.jpeg"]
+        // Ejemplo con varias fotos y un video:
+        // medios: ["assets/img/novios_15.jpeg", "assets/img/novios_14.jpeg",
+        //          { video: "assets/video/viaje.mp4", poster: "assets/img/viaje.jpg" }]
       },
       {
         fecha: "2026",
         titulo: "La pregunta",
         texto: "Frente al mar, al atardecer, con el corazón latiendo fuerte. La respuesta fue la palabra más bonita: sí.",
-        foto: "assets/img/novios_14.jpeg"
+        fondo: "#EADFCB",          // beige tostado claro: resalta este capítulo
+        medios: ["assets/img/novios_14.jpeg"]
       }
     ]
   },

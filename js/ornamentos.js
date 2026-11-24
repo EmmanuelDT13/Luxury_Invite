@@ -130,6 +130,15 @@
 
   /* ---------------- definiciones globales (degradados y filtros) ---------------- */
   function defs(c) {
+    const rv = Object.assign({ profundidad: 1, brillo: 1, patina: 1, colorPatina: "#3A2A12" }, c.relieve || {});
+    const R = {
+      ss: (4.8 * rv.profundidad).toFixed(2),
+      sc: (1.15 * rv.brillo).toFixed(2),
+      k2: (0.7 * rv.brillo).toFixed(2),
+      patina: Math.min(1, 0.55 * rv.patina).toFixed(2),
+      patinaColor: rv.colorPatina,
+      luz: c.oroBrillo || "#fff4d6"
+    };
     return `
 <svg class="svg-defs" width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
  <defs>
@@ -147,25 +156,35 @@
     <stop offset=".45" stop-color="${c.oro}"/>
     <stop offset="1" stop-color="${c.oroProfundo}"/>
   </linearGradient>
+  <radialGradient id="g-vineta-r" cx=".5" cy=".5" r=".72">
+    <stop offset=".62" stop-color="#000" stop-opacity="0"/>
+    <stop offset="1" stop-color="#2a1a05" stop-opacity=".38"/>
+  </radialGradient>
   <radialGradient id="g-vineta" cx=".5" cy=".5" r=".5">
     <stop offset=".72" stop-color="#000" stop-opacity="0"/>
     <stop offset="1" stop-color="#2a1a05" stop-opacity=".42"/>
   </radialGradient>
 
-  <!-- Relieve metálico (dorado bruñido) -->
+  <!-- Relieve metálico (oro antiguo): volumen, brillo en lo alto y pátina oscura en los bordes del tallado -->
   <filter id="f-dorado" x="-15%" y="-15%" width="130%" height="130%" color-interpolation-filters="sRGB">
-    <feGaussianBlur in="SourceAlpha" stdDeviation="1.1" result="b"/>
-    <feSpecularLighting in="b" surfaceScale="3.2" specularConstant="1.05" specularExponent="16" lighting-color="#fff4d6" result="s">
-      <feDistantLight azimuth="235" elevation="36"/>
+    <feGaussianBlur in="SourceAlpha" stdDeviation="1.25" result="b"/>
+    <feSpecularLighting in="b" surfaceScale="${R.ss}" specularConstant="${R.sc}" specularExponent="22" lighting-color="${R.luz}" result="s">
+      <feDistantLight azimuth="235" elevation="34"/>
     </feSpecularLighting>
     <feComposite in="s" in2="SourceAlpha" operator="in" result="s2"/>
-    <feDiffuseLighting in="b" surfaceScale="3.2" diffuseConstant="1" lighting-color="#ffffff" result="d">
-      <feDistantLight azimuth="235" elevation="58"/>
+    <feDiffuseLighting in="b" surfaceScale="${R.ss}" diffuseConstant="1" lighting-color="#ffffff" result="d">
+      <feDistantLight azimuth="235" elevation="44"/>
     </feDiffuseLighting>
-    <feComposite in="SourceGraphic" in2="d" operator="arithmetic" k1="1.12" k2="0" k3="0" k4="0" result="sh"/>
-    <feComposite in="s2" in2="sh" operator="arithmetic" k1="0" k2=".75" k3="1" k4="0" result="lit"/>
-    <feComposite in="lit" in2="SourceAlpha" operator="in" result="g"/>
-    <feDropShadow in="g" dx="0" dy="1.4" stdDeviation="1.1" flood-color="#3d2a0c" flood-opacity=".38"/>
+    <feComposite in="SourceGraphic" in2="d" operator="arithmetic" k1="1.34" k2="0" k3="0" k4="0" result="sh"/>
+    <feComposite in="s2" in2="sh" operator="arithmetic" k1="0" k2="${R.k2}" k3="1" k4="0" result="lit"/>
+    <feMorphology in="SourceAlpha" operator="erode" radius=".9" result="er"/>
+    <feComposite in="SourceAlpha" in2="er" operator="out" result="borde"/>
+    <feGaussianBlur in="borde" stdDeviation=".4" result="borde2"/>
+    <feFlood flood-color="${R.patinaColor}" flood-opacity="${R.patina}"/>
+    <feComposite in2="borde2" operator="in" result="pat"/>
+    <feMerge result="m"><feMergeNode in="lit"/><feMergeNode in="pat"/></feMerge>
+    <feComposite in="m" in2="SourceAlpha" operator="in" result="g"/>
+    <feDropShadow in="g" dx="0" dy="1.7" stdDeviation="1.35" flood-color="#2a1d09" flood-opacity=".45"/>
   </filter>
 
   <!-- Lacre: mapa de alturas en escala de grises -> cera con volumen -->
@@ -249,6 +268,128 @@
       <div class="marco-oval__ventana"><img class="marco-oval__foto" src="${src}" alt="${o.alt}" loading="${o.prioridad ? "eager" : "lazy"}"${o.prioridad ? ' fetchpriority="high"' : ""} decoding="async" style="object-position:${o.pos}"></div>
       ${svg}
     </div>`;
+  }
+
+  // Ondulado tallado sobre la cara del marco (una "cinta" serpenteante a lo largo de un lado)
+  function serpentina(x0, y0, x1, y1, amp, onda, w) {
+    const L = Math.hypot(x1 - x0, y1 - y0), n = Math.max(1, Math.round(L / onda));
+    const ux = (x1 - x0) / L, uy = (y1 - y0) / L, nx = -uy, ny = ux, pts = [];
+    for (let i = 0; i <= 80; i++) {
+      const t = i / 80, o = amp * Math.sin(t * n * Math.PI * 2);
+      pts.push({ x: x0 + ux * L * t + nx * o, y: y0 + uy * L * t + ny * o });
+    }
+    return taper(pts, (t) => w * (0.35 + 0.65 * Math.sin(Math.PI * t)));
+  }
+
+  /* Marco rectangular barroco (inspirado en marcos tallados de oro antiguo).
+     W×H = medida exterior del marco · M = ancho de la moldura · k = escala de los ornamentos.
+     Devuelve el SVG (reutilizado con <use>) y la posición de la ventana para la foto/video. */
+  function rectGeometria(W, H, M, k) {
+    const P = { t: 70 * k, l: 30 * k, r: 30 * k, b: 52 * k };
+    return { W, H, M, k, P, vbW: W + P.l + P.r, vbH: H + P.t + P.b };
+  }
+  // Ornamentos tallados "pesados" (rosas, acantos y volutas gruesas), como en los marcos de referencia
+  function rosaBarroca(r) {
+    let d = "", d2 = "";
+    for (let i = 0; i < 8; i++) {
+      const a = i * Math.PI / 4 + Math.PI / 8;
+      d += leaf({ x: Math.cos(a) * r * 0.3, y: Math.sin(a) * r * 0.3 }, { x: Math.cos(a) * r, y: Math.sin(a) * r }, r * 0.25, r * 0.06);
+      const b = a + Math.PI / 8;
+      d2 += leaf({ x: Math.cos(b) * r * 0.2, y: Math.sin(b) * r * 0.2 }, { x: Math.cos(b) * r * 0.62, y: Math.sin(b) * r * 0.62 }, r * 0.17, 0);
+    }
+    return `<path d="${d}"/><path d="${d2}"/><path d="${circ(0, 0, r * 0.24)}"/>`;
+  }
+  const swap = (d) => `<path d="${d}" transform="matrix(0 1 1 0 0 0)"/>`;
+  // Guirnalda de laurel tallada a lo largo de una línea
+  function laurel(x0, y0, x1, y1, paso, largo, ancho) {
+    const L = Math.hypot(x1 - x0, y1 - y0), ux = (x1 - x0) / L, uy = (y1 - y0) / L, nx = -uy, ny = ux;
+    const n = Math.max(2, Math.floor(L / paso));
+    let d = "";
+    for (let i = 0; i < n; i++) {
+      const t = (i + 0.5) / n, bx = x0 + ux * L * t, by = y0 + uy * L * t, lado = i % 2 ? 1 : -1;
+      const tip = { x: bx + ux * largo * 0.8 + nx * largo * 0.55 * lado, y: by + uy * largo * 0.8 + ny * largo * 0.55 * lado };
+      d += leaf({ x: bx, y: by }, tip, ancho, lado * ancho * 0.6);
+    }
+    return d + taper([{ x: x0, y: y0 }, { x: x1, y: y1 }], () => ancho * 0.28);
+  }
+  function esquinaPesada() {
+    let e = "";
+    e += scrollArm({ x: 14, y: 4 }, { x: 46, y: -6 }, { x: 82, y: 0 }, { x: 100, y: 16 }, { r: 9, w: 5.2, s: 1, ball: 2.6 });
+    e += leaf({ x: 24, y: 2 }, { x: 74, y: -12 }, 7.5, -8);
+    e += leaf({ x: 48, y: 6 }, { x: 96, y: 4 }, 5, 6);
+    e += circ(110, 10, 2.5) + circ(117, 9, 1.7);
+    const fuera = leaf({ x: 0, y: 0 }, { x: -24, y: -24 }, 9, 0) + leaf({ x: 0, y: 0 }, { x: -30, y: -6 }, 6.5, -4) + leaf({ x: 0, y: 0 }, { x: -6, y: -30 }, 6.5, 4);
+    return `<path d="${fuera}"/><path d="${e}"/>${swap(e)}
+      <path d="${leaf({ x: 16, y: 16 }, { x: 46, y: 46 }, 7, 0)}"/>
+      <g transform="translate(6 6)">${rosaBarroca(24)}</g>`;
+  }
+  function cartelaSuperior() {
+    let h = "";
+    h += scrollArm({ x: -10, y: 2 }, { x: -32, y: -16 }, { x: -60, y: -24 }, { x: -76, y: -8 }, { r: 8, w: 5, s: -1, sweep: Math.PI * 1.6, ball: 2.4 });
+    h += leaf({ x: -20, y: 8 }, { x: -104, y: 14 }, 7.5, 8);
+    h += leaf({ x: -36, y: -16 }, { x: -58, y: -36 }, 4.6, -4);
+    h += circ(-112, 15, 2.4) + circ(-119, 16, 1.6);
+    return both(h) + `<path d="${shell(38, 11, 150)}"/>
+      <path d="${leaf({ x: 0, y: -40 }, { x: 0, y: -64 }, 6, 0)}${circ(0, -69, 3)}"/>
+      <g transform="translate(0 2)">${rosaBarroca(16)}</g>`;
+  }
+  function cartelaLateral() {
+    const l = leaf({ x: 0, y: -8 }, { x: 5, y: -60 }, 7, 7) + leaf({ x: 0, y: -22 }, { x: -18, y: -48 }, 4.5, -3);
+    return `<path d="${l}"/><path d="${l}" transform="scale(1 -1)"/><path d="${shell(22, 7, 120)}" transform="rotate(-90)"/>${rosaBarroca(15)}`;
+  }
+  function rectDibujo(g) {
+    const { W, H, M, k } = g, m = M / 54;
+    const ring = (inset, width, attrs) => `<rect x="${f(inset + width / 2)}" y="${f(inset + width / 2)}" width="${f(W - 2 * inset - width)}" height="${f(H - 2 * inset - width)}" stroke-width="${f(width)}" fill="none" ${attrs}/>`;
+    const c = 31 * m;                       // línea central de la cara principal
+    const ec = 120 * k, cs = 108 * k, cl = 64 * k;   // espacio que ocupan esquinas, cartela superior y laterales
+    const sp = (x0, y0, x1, y1) => laurel(x0, y0, x1, y1, 15 * m, 11 * m, 3.6 * m);
+    let ser = sp(ec, c, W / 2 - cs, c) + sp(W / 2 + cs, c, W - ec, c) + sp(ec, H - c, W / 2 - cs * 0.75, H - c) + sp(W / 2 + cs * 0.75, H - c, W - ec, H - c);
+    ser += sp(c, ec, c, H / 2 - cl) + sp(c, H / 2 + cl, c, H - ec) + sp(W - c, ec, W - c, H / 2 - cl) + sp(W - c, H / 2 + cl, W - c, H - ec);
+    const ci = 14 * m, esq = `<g>${esquinaPesada()}</g>`;
+    const pos = (x, y, sx, sy, sc) => `transform="translate(${f(x)} ${f(y)}) scale(${f(sx * sc)} ${f(sy * sc)})"`;
+    return `
+      <rect x="${f(M)}" y="${f(M)}" width="${f(W - 2 * M)}" height="${f(H - 2 * M)}" fill="url(#g-vineta-r)"/>
+      <g filter="url(#f-dorado)">
+        ${ring(0, 7 * m, 'stroke="url(#g-oro)"')}
+        ${ring(7 * m, 11 * m, 'style="stroke:var(--oro-profundo)"')}
+        ${ring(7 * m, 11 * m, 'stroke="url(#g-oro)" stroke-dasharray="2 2.4"')}
+        ${ring(18 * m, 25 * m, 'stroke="url(#g-oro)"')}
+        ${ring(43 * m, 3 * m, 'style="stroke:var(--oro-profundo)"')}
+        ${ring(46 * m, 4.4 * m, 'stroke="url(#g-oro-v)" stroke-linecap="round" stroke-dasharray="0 7"')}
+        ${ring(50.6 * m, 3.4 * m, 'style="stroke:var(--oro-profundo)"')}
+      </g>
+      <g filter="url(#f-dorado)" fill="url(#g-oro)">
+        <path d="${ser}"/>
+        <g ${pos(ci, ci, 1, 1, k)}>${esq}</g><g ${pos(W - ci, ci, -1, 1, k)}>${esq}</g>
+        <g ${pos(ci, H - ci, 1, -1, k)}>${esq}</g><g ${pos(W - ci, H - ci, -1, -1, k)}>${esq}</g>
+        <g ${pos(W / 2, 9 * m, 1, 1, 1.05 * k)}>${cartelaSuperior()}</g>
+        <g ${pos(W / 2, H - 9 * m, 1, -1, 0.72 * k)}>${cartelaSuperior()}</g>
+        <g ${pos(c, H / 2, 1, 1, 0.95 * k)}>${cartelaLateral()}</g>
+        <g ${pos(W - c, H / 2, -1, 1, 0.95 * k)}>${cartelaLateral()}</g>
+      </g>`;
+  }
+  // Variantes listas: retrato (portada), foto (capítulos) y video (16:9)
+  const VARIANTES = {
+    retrato: () => rectGeometria(400, 520, 54, 1),
+    foto: () => rectGeometria(300, 392, 40, 0.72),
+    video: () => rectGeometria(640, 395, 40, 0.74)
+  };
+  function frameRect(contenido, o) {
+    o = Object.assign({ variante: "retrato", clase: "" }, o || {});
+    const g = (VARIANTES[o.variante] || VARIANTES.retrato)();
+    const { W, H, M, P, vbW, vbH } = g;
+    const pct = (v, t) => (100 * v / t).toFixed(3) + "%";
+    const ventana = `left:${pct(P.l + M, vbW)};top:${pct(P.t + M, vbH)};width:${pct(W - 2 * M, vbW)};height:${pct(H - 2 * M, vbH)}`;
+    const svg = `<svg class="marco-rect__svg" viewBox="${f(-P.l)} ${f(-P.t)} ${f(vbW)} ${f(vbH)}" aria-hidden="true">${reutilizar("orn-rect-" + o.variante, () => rectDibujo(g))}</svg>`;
+    return `<div class="marco-rect marco-rect--${o.variante} ${o.clase}" style="aspect-ratio:${f(vbW)}/${f(vbH)}">
+      <div class="marco-rect__ventana" style="${ventana}">${contenido}</div>
+      ${svg}
+    </div>`;
+  }
+  const imgMarco = (src, o) => `<img class="marco-rect__foto" src="${src}" alt="${o.alt || ""}" loading="${o.prioridad ? "eager" : "lazy"}"${o.prioridad ? ' fetchpriority="high"' : ""} decoding="async" style="object-position:${o.pos || "50% 40%"}">`;
+  function framePhoto(src, o) {
+    o = o || {};
+    return frameRect(imgMarco(src, o), { variante: o.variante || "retrato", clase: o.clase || "" });
   }
 
   // Filigrana divisoria horizontal (dorada o en relieve)
@@ -356,7 +497,8 @@
     tienda: '<path d="M4 9h16l-1.2-4.5H5.2zM5 9v11h14V9M9.5 20v-5h5v5"/>',
     estrella: '<path d="m12 3.5 2.5 5.3 5.7.7-4.2 3.9 1.1 5.7L12 16.3l-5.1 2.8L8 13.4 3.8 9.5l5.7-.7z"/>',
     flecha: '<path d="M5 12h14M13 6l6 6-6 6"/>',
-    mapa: '<path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2zM9 4v14M15 6v14"/>'
+    mapa: '<path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2zM9 4v14M15 6v14"/>',
+    play: '<path d="M8.5 5.5v13l10.5-6.5z" fill="currentColor" stroke="none"/>'
   };
   function icon(name, cls) {
     return `<svg class="icono ${cls || ""}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.15" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONOS[name] || ICONOS.estrella}</svg>`;
@@ -375,5 +517,5 @@
     <path pathLength="1" d="M44 44l6-1.2M35 47h.01M35 54h.01M24 79l-1 45M46 79l1 45M28 79l-.5 45M42 79l.5 45" />
   </svg>`;
 
-  window.ORN = { defs, frameOval, divider, corner, seal, icon, vestido, smoking, crestPaths };
+  window.ORN = { defs, frameOval, frameRect, framePhoto, divider, corner, seal, icon, vestido, smoking, crestPaths };
 })();
