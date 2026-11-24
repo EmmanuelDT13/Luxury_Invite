@@ -81,6 +81,12 @@
     if (P.colorSobre) r.setProperty("--sobre", P.colorSobre);
     if (P.colorForro) r.setProperty("--forro", P.colorForro);
     if (P.colorListon) r.setProperty("--liston", P.colorListon);
+    // Tamaños (1 = diseño original). Las imágenes tienen tope para no romper la cuadrícula.
+    const TAM = (C.tema && C.tema.tamanos) || {};
+    const num = (v) => (isFinite(+v) && +v > 0 ? +v : 1);
+    ["texto", "titulos", "nombres", "etiquetas", "numeros"].forEach((k) => r.setProperty(`--t-${k}`, num(TAM[k])));
+    const MAR = TAM.marcos || {};
+    ["hero", "capitulos", "videos", "cierre", "galeria", "eventos"].forEach((k) => r.setProperty(`--m-${k}`, num(MAR[k])));
     r.setProperty("--f-script", `"${FUENTES.caligrafica}", cursive`);
     r.setProperty("--f-caps", `"${FUENTES.grabada}", "Times New Roman", serif`);
     r.setProperty("--f-texto", `"${FUENTES.texto}", Georgia, serif`);
@@ -282,20 +288,24 @@
     return m.map((x) => (typeof x === "string" ? (RX_VIDEO.test(x) ? { video: x } : { foto: x }) : x))
       .filter((x) => x && (x.foto || x.video || x.youtube));
   }
+  const RX_IMG = /\.(jpe?g|png|webp|avif|gif)(\?|#|$)/i;
   function htmlVideo(v, titulo) {
     const H = C.historia || {};
-    const auto = (v.reproduccion || H.reproduccionVideos || "manual") === "auto";
-    const poster = v.poster || (v.youtube ? `https://i.ytimg.com/vi/${encodeURIComponent(v.youtube)}/hqdefault.jpg` : "");
+    // sonido: false → sin reproductor ni audio: se reproduce solo, silenciado y en bucle mientras se ve
+    const mudo = v.sonido === false || (v.sonido == null && H.sonidoVideos === false);
+    const auto = mudo || (v.reproduccion || H.reproduccionVideos || "manual") === "auto";
+    // El póster debe ser una imagen; si se indicó un video (o nada), se muestra su primer cuadro
+    const poster = v.poster && RX_IMG.test(v.poster) ? v.poster : (v.youtube ? `https://i.ytimg.com/vi/${encodeURIComponent(v.youtube)}/hqdefault.jpg` : "");
     let dentro;
     if (v.youtube) {
       // YouTube se carga solo al tocar: hasta entonces es una imagen ligera (sin el reproductor de ~1 MB)
-      dentro = `<div class="video video--yt" data-yt="${esc(v.youtube)}">
+      dentro = `<div class="video video--yt" data-yt="${esc(v.youtube)}"${mudo ? ' data-mudo="1"' : ""}>
         <img class="marco-rect__foto" src="${esc(poster)}" alt="${esc(v.titulo || titulo)}" loading="lazy" decoding="async">
         <button class="video__play" type="button" aria-label="Reproducir video">${ICON("play")}</button></div>`;
     } else {
       const src = esc(v.video) + (poster ? "" : "#t=0.1");
-      dentro = `<div class="video${auto ? " video--auto" : ""}">
-        <video class="marco-rect__video" playsinline preload="none" ${auto ? "muted loop" : ""} ${poster ? `poster="${esc(poster)}"` : ""} data-src="${src}" aria-label="${esc(v.titulo || titulo)}"></video>
+      dentro = `<div class="video${auto ? " video--auto" : ""}${mudo ? " video--mudo" : ""}">
+        <video class="marco-rect__video" playsinline preload="none" ${auto ? "muted loop" : ""} ${mudo ? 'disablepictureinpicture disableremoteplayback tabindex="-1"' : ""} ${poster ? `poster="${esc(poster)}"` : ""} data-src="${src}" aria-label="${esc(v.titulo || titulo)}"></video>
         ${auto ? "" : `<button class="video__play" type="button" aria-label="Reproducir video">${ICON("play")}</button>`}</div>`;
     }
     return `<div class="capitulo__video">${ORN.frameRect(dentro, { variante: "video" })}</div>`;
@@ -308,9 +318,9 @@
       const medios = mediosDe(c);
       const nFotos = medios.filter((m) => m.foto).length;
       const hayVideo = medios.some((m) => m.video || m.youtube);
-      // Con video: los videos van primero (protagonistas) y después las fotos
-      const videosHtml = medios.filter((m) => !m.foto).map((m) => htmlVideo(m, c.titulo)).join("");
-      const items = medios.filter((m) => m.foto).map((m) => {
+      // El orden del arreglo "medios" es el orden en pantalla (fotos de 2 en 2; cada video en su fila)
+      const items = medios.map((m) => {
+        if (!m.foto) return htmlVideo(m, c.titulo);
         const alt = esc(m.alt || c.titulo), pos = esc(m.posicion || c.posicionFoto || "50% 40%");
         const marco = (m.marco || marcoFotos) === "rectangular"
           ? ORN.framePhoto(esc(m.foto), { variante: "foto", alt, pos })
@@ -320,7 +330,6 @@
       const clases = ["capitulo", hayVideo ? "capitulo--video" : "", hayVideo && !nFotos ? "capitulo--solo-video" : "", nFotos > 1 ? "capitulo--varias" : ""].join(" ").replace(/\s+/g, " ").trim();
       return `
       <article class="${clases}" data-rev${c.fondo ? ` data-fondo-cap="${esc(c.fondo)}" style="--fondo-cap:${esc(c.fondo)}"` : ""}>
-        ${videosHtml ? `<div class="capitulo__videos">${videosHtml}</div>` : ""}
         ${items ? `<div class="capitulo__medios">${items}</div>` : ""}
         <div class="capitulo__texto">
           <span class="capitulo__fecha">${esc(c.fecha)}</span>
@@ -685,18 +694,33 @@
   // Revelado progresivo
   let io;
   function iniciarRevelado() {
+    /* Fase 1 (≈1 pantalla antes): se crea la capa del elemento y se decodifican sus fotos, para que
+       el trabajo pesado NO coincida con la animación. Fase 2 (al entrar): solo se anima. */
+    const preparar = (el) => {
+      if (el._listo) return; el._listo = true;
+      el.style.willChange = "opacity, transform, filter";
+      $$("img", el).forEach((im) => {
+        if (im.loading === "lazy") im.loading = "eager";
+        const dec = () => { if (im.decode) im.decode().catch(() => {}); };
+        if (im.complete) dec(); else im.addEventListener("load", dec, { once: true });
+      });
+    };
+    const prep = new IntersectionObserver((es) => es.forEach((e) => {
+      if (e.isIntersecting) { prep.unobserve(e.target); preparar(e.target); }
+    }), { rootMargin: "0px 0px 110% 0px" });
     io = new IntersectionObserver((es) => es.forEach((e) => {
       if (!e.isIntersecting) return;
       const el = e.target;
-      io.unobserve(el);
-      // Capa propia mientras dura la animación (desenfoque + movimiento en GPU) y se libera al terminar
-      el.style.willChange = "opacity, transform, filter";
-      requestAnimationFrame(() => el.classList.add("visible"));
+      io.unobserve(el); prep.unobserve(el);
+      const yaListo = el._listo;
+      preparar(el);
+      const mostrar = () => el.classList.add("visible");
+      if (yaListo) mostrar(); else requestAnimationFrame(mostrar);
       const liberar = (ev) => { if (ev.target === el && ev.propertyName === "opacity") { el.style.willChange = ""; el.removeEventListener("transitionend", liberar); } };
       el.addEventListener("transitionend", liberar);
       setTimeout(() => (el.style.willChange = ""), 4500);
     }), { rootMargin: "0px 0px -10% 0px", threshold: 0.12 });
-    $$("[data-rev]").forEach((el) => io.observe(el));
+    $$("[data-rev]").forEach((el) => { prep.observe(el); io.observe(el); });
 
     const fondos = new IntersectionObserver((es) => es.forEach((e) => {
       if (!e.isIntersecting) return;
@@ -734,34 +758,41 @@
     $$("[data-scrub]").forEach((el) => scrubs.push({ el, modo: el.dataset.scrub, p: -1, t: objetivos(el) }));
     const barra = $(".progreso");
     let alto = 0, vh = innerHeight;
-    const medirAlto = () => { vh = innerHeight; alto = D.documentElement.scrollHeight - vh; };
-    medirAlto();
-    if ("ResizeObserver" in window) new ResizeObserver(() => { medirAlto(); pedir(); }).observe($("#invitacion"));
+    // Geometría en caché: se mide una vez (y al cambiar el tamaño del documento) y cada cuadro de
+    // scroll solo hace aritmética con scrollY, sin forzar lecturas de layout.
+    const medir = () => {
+      vh = innerHeight; alto = D.documentElement.scrollHeight - vh;
+      const y = scrollY;
+      for (const s of scrubs) { const r = s.el.getBoundingClientRect(); s.top = r.top + y; s.h = r.height; }
+    };
+    let pendienteMedir = false;
+    const remedir = () => { pendienteMedir = true; pedir(); };
     const actualizar = () => {
       tic = false;
-      // 1) Solo lecturas
-      const lect = scrubs.map((s) => s.el.getBoundingClientRect());
+      if (pendienteMedir) { pendienteMedir = false; medir(); }
       const y = scrollY;
-      // 2) Solo escrituras
-      scrubs.forEach((s, i) => {
-        const r = lect[i];
-        if (r.bottom < -200 || r.top > vh + 200) return;
+      for (const s of scrubs) {
+        const top = s.top - y, h = s.h;
+        if (top + h < -200 || top > vh + 200) continue;
         let p;
-        if (s.modo === "fijo") p = -r.top / Math.max(1, r.height - vh);
-        else if (s.modo === "hilo") p = (vh * 0.62 - r.top) / r.height;
-        else p = (vh - r.top) / (vh + r.height);
+        if (s.modo === "fijo") p = -top / Math.max(1, h - vh);
+        else if (s.modo === "hilo") p = (vh * 0.62 - top) / Math.max(1, h);
+        else p = (vh - top) / (vh + h);
         p = clamp(p);
-        if (Math.abs(p - s.p) < 0.0004) return;
+        if (Math.abs(p - s.p) < 0.0004) continue;
         s.p = p;
         const v = p.toFixed(4);
         for (const t of s.t) t.style.setProperty("--p", v);
         if (s.el.dataset.accion === "manifiesto") manifiesto(s.el, p);
-      });
+      }
       barra.style.setProperty("--avance", alto > 0 ? (y / alto).toFixed(4) : 0);
     };
     const pedir = () => { if (!tic) { tic = true; requestAnimationFrame(actualizar); } };
+    if ("ResizeObserver" in window) new ResizeObserver(remedir).observe($("#invitacion"));
     addEventListener("scroll", pedir, { passive: true });
-    addEventListener("resize", () => { medirAlto(); pedir(); });
+    addEventListener("resize", remedir);
+    addEventListener("load", remedir);
+    medir();
     actualizar();
   }
 
@@ -917,8 +948,9 @@
       if (yt && btn) {
         btn.addEventListener("click", () => {
           const id = encodeURIComponent(yt.dataset.yt);
-          yt.innerHTML = `<iframe src="https://www.youtube-nocookie.com/embed/${id}?autoplay=1&playsinline=1&rel=0&modestbranding=1" title="Video" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen></iframe>`;
-          silenciarMusica();
+          const mudo = yt.dataset.mudo === "1";
+          yt.innerHTML = `<iframe src="https://www.youtube-nocookie.com/embed/${id}?autoplay=1&playsinline=1&rel=0&modestbranding=1${mudo ? `&mute=1&controls=0&loop=1&playlist=${id}` : ""}" title="Video" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen></iframe>`;
+          if (!mudo) silenciarMusica();
         });
         return;
       }

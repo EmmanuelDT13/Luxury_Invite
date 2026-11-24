@@ -56,6 +56,23 @@ window.INVITACION = {
       patina: 1,               // oscurecimiento en los bordes del grabado (0 = sin pátina)
       colorPatina: "#3A2A12"
     },
+    // Tamaños (1 = diseño original; 1.2 = 20 % más grande, 0.9 = 10 % más chico).
+    // Las fotos y marcos tienen tope: aunque los agrandes, la cuadrícula (2 fotos por fila, etc.) se respeta.
+    tamanos: {
+      texto: 1,        // párrafos y textos generales
+      titulos: 1,      // títulos caligráficos de cada sección
+      nombres: 1,      // nombres de los novios (portada y cierre)
+      etiquetas: 1,    // textos pequeños en mayúsculas y botones
+      numeros: 1,      // fecha, años de la historia, horas y cuenta regresiva
+      marcos: {
+        hero: 1,       // foto principal con su marco
+        capitulos: 1,  // fotos de la historia
+        videos: 1,     // videos de la historia
+        cierre: 1,     // foto del cierre
+        galeria: 1,    // fotos del carrusel
+        eventos: 1     // fotos de ceremonia y recepción
+      }
+    },
     fuentes: {
       // Cualquier fuente de Google Fonts (escribe el nombre exacto)
       caligrafica: "Pinyon Script",       // nombres y títulos
@@ -133,13 +150,15 @@ window.INVITACION = {
   },
 
   /* ---------- Nuestra historia (línea del tiempo) ----------
-     Cada capítulo admite "medios": una lista de fotos y/o videos, en el orden deseado.
+     Cada capítulo admite "medios": una lista de fotos y/o videos. El ORDEN del arreglo es el orden
+     en pantalla (fotos de 2 en 2 por fila; cada video ocupa su propia fila con marco horizontal).
        • Foto:   "assets/img/foto.jpg"   o   { foto: "assets/img/foto.jpg", posicion: "50% 30%" }
        • Video:  { video: "assets/video/clip.mp4", poster: "assets/img/portada-video.jpg" }
-                 (opcional: reproduccion: "auto" → silenciado y en bucle mientras se ve)
+           - poster (opcional): una IMAGEN; si no hay, se muestra el primer cuadro del video
+           - sonido: false → sin reproductor ni audio; se reproduce solo, en bucle, mientras se ve
+             (la música de fondo sigue sonando)
+           - reproduccion: "auto" → silenciado y en bucle, pero el invitado puede activar el sonido
        • YouTube:{ youtube: "ID_DEL_VIDEO" }   (el reproductor solo se carga al tocar)
-     Fotos: máximo 2 por fila, todas del mismo tamaño. Videos: uno por fila, con marco horizontal
-     y protagonismo (van primero en su capítulo).
      "fondo" (opcional): color del capítulo; entre capítulos se difumina suavemente. */
   historia: {
     etiqueta: "Capítulo a capítulo",
@@ -148,6 +167,7 @@ window.INVITACION = {
     difuminado: 380,             // px de transición suave entre colores de capítulos
     reproduccionVideos: "manual",// "manual" (botón dorado) o "auto" (silenciado al verse)
     pausarMusicaConVideo: true,  // la música de fondo se pausa mientras suena un video
+    sonidoVideos: true,          // false = TODOS los videos sin sonido ni reproductor, en automático
     capitulos: [
       {
         fecha: "2018",
@@ -160,16 +180,16 @@ window.INVITACION = {
         titulo: "Un hogar, dos sueños",
         texto: "Aprendimos que el amor también se construye en lo cotidiano: en las mañanas tranquilas y en los viajes que nos cambiaron.",
         medios: ["assets/img/novios_15.jpeg"]
-        // Ejemplo con varias fotos y un video:
-        // medios: ["assets/img/novios_15.jpeg", "assets/img/novios_14.jpeg",
-        //          { video: "assets/video/viaje.mp4", poster: "assets/img/viaje.jpg" }]
+        // Ejemplo: dos fotos arriba y debajo un video sin sonido que se reproduce solo:
+        // medios: ["assets/img/novios_14.jpeg", "assets/img/novios_14.jpeg",
+        //          { video: "assets/video/novios_01.mp4", sonido: false }]
       },
       {
         fecha: "2026",
         titulo: "La pregunta",
         texto: "Frente al mar, al atardecer, con el corazón latiendo fuerte. La respuesta fue la palabra más bonita: sí.",
         fondo: "#EADFCB",          // beige tostado claro: resalta este capítulo
-        medios: ["assets/img/novios_14.jpeg"]
+        medios: ["assets/img/novios_14.jpeg", "assets/img/novios_14.jpeg", { video: "assets/video/novios_01.mp4", sonido: false }]
       }
     ]
   },

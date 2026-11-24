@@ -139,7 +139,8 @@
       patinaColor: rv.colorPatina,
       luz: c.oroBrillo || "#fff4d6"
     };
-    return `
+    COLORES = c;
+    const txt = `
 <svg class="svg-defs" width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
  <defs>
   <linearGradient id="g-oro" x1="0" y1="0" x2="1" y2="1">
@@ -224,6 +225,8 @@
   </filter>
  </defs>
 </svg>`;
+    DEFS_TXT = txt.slice(txt.indexOf("<defs>"), txt.indexOf("</defs>") + 7);
+    return txt;
   }
 
   /* ---------------- registro de piezas reutilizables ----------------
@@ -231,6 +234,21 @@
      El resultado visual es idéntico, pero el HTML pesa una fracción y el navegador
      procesa mucho menos. */
   const REGISTRO = {};
+  let DEFS_TXT = "", COLORES = {};
+  /* Ornamentos con relieve (marcos y filigranas) como IMAGEN: el navegador dibuja el filtro de luz
+     una sola vez por tamaño y luego lo trata como un bitmap. Antes eran SVG "vivos" que se volvían a
+     calcular (en el hilo principal en Safari) cada vez que algo cercano se repintaba o se animaba. */
+  const IMAGENES = {};
+  function comoImagen(id, vb, contenido) {
+    if (!IMAGENES[id]) {
+      const [x, y, w, h] = vb;
+      let cuerpo = contenido().replace(/var\(--oro-profundo\)/g, COLORES.oroProfundo || "#5C4A28");
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${f(x)} ${f(y)} ${f(w)} ${f(h)}" width="${f(w)}" height="${f(h)}">${DEFS_TXT}${cuerpo}</svg>`;
+      try { IMAGENES[id] = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" })); }
+      catch (e) { IMAGENES[id] = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg); }
+    }
+    return IMAGENES[id];
+  }
   function reutilizar(id, contenido) {
     if (!REGISTRO[id]) {
       REGISTRO[id] = `<g id="${id}">${contenido()}</g>`;
@@ -263,7 +281,9 @@
     <g transform="translate(${cx} ${cy + ry + 21}) scale(${o.sencillo ? 0.5 : 0.72} -${o.sencillo ? 0.5 : 0.72})">${crestPaths({ shell: !o.sencillo })}</g>
     ${o.sencillo ? "" : `<g transform="translate(${cx - rx - 21} ${cy})">${rosette(15)}</g><g transform="translate(${cx + rx + 21} ${cy})">${rosette(15)}</g>`}
   </g>`;
-    const svg = `<svg class="marco-oval__svg" viewBox="0 0 ${W} ${H}" aria-hidden="true">${reutilizar(o.sencillo ? "orn-oval-s" : "orn-oval", dibujo)}</svg>`;
+    const vb = [-10, -6, W + 20, H + 32];
+    const url = comoImagen(o.sencillo ? "orn-oval-s" : "orn-oval", vb, dibujo);
+    const svg = `<img class="marco-oval__svg" src="${url}" alt="" aria-hidden="true" decoding="async" style="inset:auto;left:${f(100 * vb[0] / W)}%;top:${f(100 * vb[1] / H)}%;width:${f(100 * vb[2] / W)}%;height:${f(100 * vb[3] / H)}%">`;
     return `<div class="marco-oval${o.sencillo ? " marco-oval--sencillo" : ""}">
       <div class="marco-oval__ventana"><img class="marco-oval__foto" src="${src}" alt="${o.alt}" loading="${o.prioridad ? "eager" : "lazy"}"${o.prioridad ? ' fetchpriority="high"' : ""} decoding="async" style="object-position:${o.pos}"></div>
       ${svg}
@@ -380,7 +400,7 @@
     const { W, H, M, P, vbW, vbH } = g;
     const pct = (v, t) => (100 * v / t).toFixed(3) + "%";
     const ventana = `left:${pct(P.l + M, vbW)};top:${pct(P.t + M, vbH)};width:${pct(W - 2 * M, vbW)};height:${pct(H - 2 * M, vbH)}`;
-    const svg = `<svg class="marco-rect__svg" viewBox="${f(-P.l)} ${f(-P.t)} ${f(vbW)} ${f(vbH)}" aria-hidden="true">${reutilizar("orn-rect-" + o.variante, () => rectDibujo(g))}</svg>`;
+    const svg = `<img class="marco-rect__svg" src="${comoImagen("orn-rect-" + o.variante, [-P.l, -P.t, vbW, vbH], () => rectDibujo(g))}" alt="" aria-hidden="true" decoding="async">`;
     return `<div class="marco-rect marco-rect--${o.variante} ${o.clase}" style="aspect-ratio:${f(vbW)}/${f(vbH)}">
       <div class="marco-rect__ventana" style="${ventana}">${contenido}</div>
       ${svg}
@@ -405,7 +425,7 @@
     d += `<path d="${leaf({ x: 0, y: -2 }, { x: 0, y: -18 }, 3.2, 0)}${leaf({ x: 0, y: 2 }, { x: 0, y: 14 }, 2.6, 0)}${leaf({ x: -2, y: 0 }, { x: -12, y: 0 }, 2.2, 0)}${leaf({ x: 2, y: 0 }, { x: 12, y: 0 }, 2.2, 0)}${circ(0, 0, 2.6)}"/>`;
     return `<g fill="url(#g-oro)" filter="url(#f-dorado)">${d}</g>`;
     };
-    return `<svg class="filigrana ${cls || ""}" viewBox="-145 -30 290 50" aria-hidden="true">${reutilizar("orn-div", dibujo)}</svg>`;
+    return `<img class="filigrana ${cls || ""}" src="${comoImagen("orn-div", [-145, -30, 290, 50], dibujo)}" alt="" aria-hidden="true" decoding="async" width="290" height="50">`;
   }
 
   // Esquinero en relieve (tono sobre tono)
