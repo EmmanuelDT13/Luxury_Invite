@@ -33,7 +33,8 @@
     asistenciaNo: "Lamentablemente no podré asistir.", lugarUno: "Un lugar reservado en su honor",
     lugaresVarios: "{n} lugares reservados en su honor", pase: "pase", pases: "pases",
     sinInvitado: "Nos casamos", googleCal: "Google Calendar", appleCal: "Apple · Outlook",
-    musicaOn: "Pausar música", musicaOff: "Activar música", abrir: "Abrir la invitación"
+    musicaOn: "Pausar música", musicaOff: "Activar música", abrir: "Abrir la invitación",
+    atajoFecha: "Fecha", atajoLugar: "Lugar", atajoRsvp: "Confirmar"
   }, C.textos || {});
 
   const N = Object.assign({ ella: "", el: "", conector: "&", iniciales: [] }, C.novios || {});
@@ -256,10 +257,21 @@
         <div data-rev style="--d:2s">${ORN.divider("desplegar")}</div>
         <p class="hero__fecha" data-rev style="--d:2.2s"><span>${pad(F.d)}</span><i>◆</i><span>${pad(F.mo)}</span><i>◆</i><span>${F.y}</span></p>
         <p class="hero__frase" data-rev style="--d:2.4s">${esc(H.frase)}</p>
+        ${atajos()}
         <div class="desliza" data-rev style="--d:2.9s"><span>${esc(T.desliza).toUpperCase()}</span><i></i></div>
       </div>
     </section>`;
   };
+
+  // Accesos rápidos a lo esencial (solo a secciones que existan en el orden)
+  const ORDEN = C.orden || ["hero", "fecha", "eventos", "itinerario", "vestimenta", "rsvp", "notas", "hospedaje", "regalos", "manifiesto", "historia", "padres", "galeria", "cierre"];
+  function atajos() {
+    if ((C.hero || {}).atajos === false) return "";
+    const hay = (k) => ORDEN.includes(k) && !((C[k === "fecha" ? "cuentaRegresiva" : k] || {}).mostrar === false);
+    const links = [["fecha", "fecha", T.atajoFecha, "calendario"], ["eventos", "eventos", T.atajoLugar, "pin"], ["rsvp", "rsvp", T.atajoRsvp, "sobre"]]
+      .filter(([k]) => hay(k)).map(([, id, txt, ic]) => `<a class="atajos__item" href="#${id}" data-ir="${id}">${ICON(ic)}<span>${esc(txt)}</span></a>`).join("");
+    return links ? `<nav class="atajos" data-rev style="--d:2.6s" aria-label="Información rápida">${links}</nav>` : "";
+  }
 
   S.manifiesto = () => {
     const M = C.manifiesto || {};
@@ -631,7 +643,7 @@
   };
 
   function construirInvitacion() {
-    const orden = C.orden || ["hero", "manifiesto", "historia", "padres", "fecha", "eventos", "itinerario", "vestimenta", "galeria", "regalos", "hospedaje", "notas", "rsvp", "cierre"];
+    const orden = ORDEN;
     const html = orden.map((clave) => {
       const [k, arg] = String(clave).split(":");
       const datos = C[k === "fecha" ? "cuentaRegresiva" : k];
@@ -1159,9 +1171,48 @@
      APERTURA DEL SOBRE
      ========================================================================== */
   let abierto = false;
+
+  /* Recordar que la invitación ya se abrió en este dispositivo (portada.recordarHoras, 24 h por defecto).
+     Mientras no venza, se entra directo sin la animación del sobre; al vencer, el sobre vuelve.
+     El plazo cuenta desde la última vez que se abrió el sobre. #con-portada fuerza el sobre. */
+  const HORAS = P.recordarHoras == null ? 24 : +P.recordarHoras;
+  const CLAVE_VISTA = "invitacion-abierta:" + location.pathname;
+  function yaAbierta() {
+    if (!(HORAS > 0) || location.hash === "#con-portada") return false;
+    try { const t = +localStorage.getItem(CLAVE_VISTA); return t > 0 && Date.now() - t < HORAS * 3600e3; } catch (e) { return false; }
+  }
+  function recordarApertura() {
+    if (HORAS > 0) try { localStorage.setItem(CLAVE_VISTA, String(Date.now())); } catch (e) {}
+  }
+
+  // Entrada directa (sin sobre): la invitación aparece de inmediato
+  function abrirDirecto() {
+    abierto = true;
+    const portada = $("#portada"); if (portada) portada.remove();
+    window.scrollTo(0, 0);
+    const main = $("#invitacion");
+    main.classList.add("activa"); main.removeAttribute("aria-hidden");
+    D.body.classList.remove("bloqueado");
+    iniciarRevelado();
+    iniciarFondosHistoria();
+    $(".polvo").forEach(polvo);
+    $("#musica").classList.add("visible");
+    // Sin el toque del sello el navegador aún no deja sonar: la música empieza con el primer toque
+    if (!audio) return;
+    const tipos = ["pointerup", "touchend", "keydown"];
+    const quitar = () => tipos.forEach((t) => D.removeEventListener(t, intentar, true));
+    const intentar = (e) => {
+      if (!audio.paused || (e.target.closest && e.target.closest("#musica"))) return quitar();
+      sonar(true);
+      setTimeout(() => { if (!audio.paused) quitar(); }, 500);
+    };
+    tipos.forEach((t) => D.addEventListener(t, intentar, true));
+  }
+
   async function abrir() {
     if (abierto) return;
     abierto = true;
+    recordarApertura();
     const portada = $("#portada"), sobre = $(".sobre", portada);
     sonar(true);
 
@@ -1222,7 +1273,8 @@
   async function iniciar() {
     aplicarTema();
     ESQ_SVG = ORN.corner();
-    construirPortada();
+    const directo = yaAbierta() || location.hash === "#sin-portada";
+    if (!directo) construirPortada();
     construirInvitacion();
 
     iniciarScroll();
@@ -1231,6 +1283,23 @@
     iniciarVideos();
     iniciarRSVP();
     iniciarMusica();
+
+    // Accesos rápidos del inicio: desplazamiento suave hasta la sección
+    D.addEventListener("click", (e) => {
+      const a = e.target.closest && e.target.closest("[data-ir]");
+      const t = a && D.getElementById(a.dataset.ir);
+      if (t) { e.preventDefault(); t.scrollIntoView({ behavior: REDUCIDO ? "auto" : "smooth", block: "start" }); }
+    });
+
+    if (directo) {
+      await (D.fonts && D.fonts.ready ? Promise.race([D.fonts.ready, sleep(1500)]) : sleep(200));
+      const pre = $("#precarga");
+      pre.classList.add("fuera");
+      setTimeout(() => pre.remove(), 1200);
+      if (audio) { audio.preload = "auto"; try { audio.load(); } catch (e) {} }
+      abrirDirecto();
+      return;
+    }
 
     const portada = $("#portada");
     const fondo = P.fondo;

@@ -42,7 +42,10 @@ Todo vive en **`config.js`**:
 https://tusitio.com/boda/?c=FH01                         → busca el código en invitados.lista
 https://tusitio.com/boda/?invitado=Familia%20Ruiz&pases=3  → nombre y pases directos
 https://tusitio.com/boda/#sin-portada                      → salta el sobre (útil para revisar)
+https://tusitio.com/boda/#con-portada                      → fuerza el sobre aunque ya se haya abierto
 ```
+
+**Sobre recordado:** cuando un invitado abre el sobre, el dispositivo lo recuerda durante `portada.recordarHoras` (24 h por defecto). En ese plazo entra directo a la invitación, sin la animación; al vencer, el sobre vuelve a aparecer. Con `0` se muestra siempre. La música empieza con su primer toque en la página.
 
 El nombre aparece en la portada, en el formulario de confirmación y en el número de lugares reservados. El selector de personas se limita a los pases.
 

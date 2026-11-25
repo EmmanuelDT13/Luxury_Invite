@@ -78,6 +78,79 @@
   const mirror = (d) => `<path d="${d}" transform="scale(-1 1)"/>`;
   const both = (d) => `<path d="${d}"/>` + mirror(d);
 
+  /* ---------------- oro antiguo SIN filtros de luz ----------------
+     Antes el relieve se calculaba con filtros SVG (feSpecularLighting/feDiffuseLighting), que el
+     móvil tenía que recalcular píxel a píxel a cada tamaño. Ahora la luz se "hornea" en degradados:
+     la moldura se modela como un perfil de alturas y se ilumina con una luz fija (arriba a la izquierda),
+     como un marco real. Los ornamentos tallados llevan sombra proyectada y filo de luz. Mismo aspecto
+     de relieve, una fracción del costo. */
+  const hex = (h) => {
+    h = String(h || "#000").replace("#", "");
+    if (h.length === 3) h = h.split("").map((c) => c + c).join("");
+    const n = parseInt(h, 16) || 0;
+    return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  };
+  const mezcla = (a, b, t) => {
+    const A = hex(a), B = hex(b);
+    return "#" + A.map((v, i) => Math.round(v + (B[i] - v) * t).toString(16).padStart(2, "0")).join("");
+  };
+  const n3 = (v) => { const l = Math.hypot(v[0], v[1], v[2]); return v.map((x) => x / l); };
+  const LUZ = n3([-0.55, -0.68, 0.62]);                 // luz cálida desde arriba a la izquierda
+  const LXY = Math.hypot(LUZ[0], LUZ[1]);
+  const LHAT = { x: LUZ[0] / LXY, y: LUZ[1] / LXY };
+  const MED = n3([LUZ[0], LUZ[1], LUZ[2] + 1]);          // vector medio (brillo especular)
+  const MXY = Math.hypot(MED[0], MED[1]);
+  let RV = { profundidad: 1, brillo: 1, patina: 1 };
+
+  // Luminosidad de una superficie con pendiente s, cuyo sentido "hacia dentro" forma nl = n·luz
+  function luzEn(s, nl) {
+    const k = 1 / Math.hypot(s, 1);
+    const d = Math.max(0, (-s * nl * LXY + LUZ[2]) * k);
+    const sp = Math.pow(Math.max(0, (-s * nl * MXY + MED[2]) * k), 26);
+    return 0.13 + d * 0.86 + sp * 0.75 * RV.brillo;
+  }
+  // Luminosidad → color de oro antiguo (sombras con pátina, medios, brillos)
+  function rampa(v) {
+    const c = COLORES;
+    const pat = mezcla(c.oroProfundo || "#5C4A28", RV.colorPatina || "#3A2A12", Math.min(1, 0.6 * RV.patina));
+    const P = [[0, mezcla(pat, "#140d05", 0.35)], [0.3, c.oroProfundo], [0.56, c.oro], [0.8, c.oroClaro], [1.02, c.oroBrillo], [1.3, mezcla(c.oroBrillo, "#fffaf0", 0.6)]];
+    v = Math.max(0, Math.min(1.3, v));
+    for (let i = 1; i < P.length; i++) if (v <= P[i][0]) return mezcla(P[i - 1][1], P[i][1], (v - P[i - 1][0]) / (P[i][0] - P[i - 1][0]));
+    return P[P.length - 1][1];
+  }
+  /* Perfil de la moldura, de fuera (t=0) hacia la foto (t=1); alturas en fracción del ancho.
+     Labio exterior · toro (cordón grueso) · media caña · filete · canal de perlas · labio interior */
+  const PERFIL = [[0, 0], [0.035, 0.07], [0.07, 0.05], [0.1, 0.05], [0.29, 0.24], [0.46, 0.08], [0.56, 0.05], [0.66, 0.1], [0.72, 0.1], [0.75, 0.04], [0.86, 0.04], [0.92, 0.09], [0.96, 0.07], [1, 0]];
+  function pendiente(t) {
+    for (let i = 1; i < PERFIL.length; i++) {
+      const [t0, h0] = PERFIL[i - 1], [t1, h1] = PERFIL[i];
+      if (t <= t1) { const u = (t - t0) / (t1 - t0); return 2.4 * RV.profundidad * (h1 - h0) * Math.PI * Math.sin(Math.PI * u) / (2 * (t1 - t0)); }
+    }
+    return 0;
+  }
+  const paradas = (fn, n) => { let s = ""; for (let i = 0; i <= n; i++) { const t = i / n; s += `<stop offset="${t.toFixed(3)}" stop-color="${fn(t)}"/>`; } return s; };
+
+  /* Relieve de ornamentos: cada pieza lleva sombra suave, sombra de contacto, filo de luz y cuerpo.
+     Las piezas se apilan en orden, así la sombra de un pétalo cae sobre el de abajo (como en la talla). */
+  function relieve(markup, lugar, s, escala) {
+    const piezas = markup.match(/<path[^>]*\/>/g) || [];
+    const c = COLORES, osc = "#24180a", sw = f((0.42 * s) / (escala || 1));
+    const capa = (p, a) => `<g ${a}><g transform="${lugar}">${p}</g></g>`;
+    return piezas.map((p) =>
+      capa(p, `fill="${osc}" opacity=".13" transform="translate(${f(2 * s)} ${f(2.9 * s)})"`) +
+      capa(p, `fill="${osc}" opacity=".4" transform="translate(${f(0.75 * s)} ${f(1.1 * s)})"`) +
+      capa(p, `fill="${c.oroBrillo}" opacity=".95" transform="translate(${f(-0.5 * s)} ${f(-0.6 * s)})"`) +
+      capa(p, `fill="url(#g-orn)" stroke="${c.oroProfundo}" stroke-opacity=".5" stroke-width="${sw}"`)
+    ).join("");
+  }
+  // Fila de perlas sobre cualquier contorno (rect o elipse): sombra, cuerpo y brillo
+  function perlas(forma, r, paso, s) {
+    const c = COLORES, base = `fill="none" stroke-linecap="round" stroke-dasharray="0 ${f(paso)}"`;
+    return `<g ${base} stroke="#24180a" stroke-opacity=".5" stroke-width="${f(2 * r)}" transform="translate(${f(0.35 * r * s)} ${f(0.5 * r * s)})">${forma}</g>
+      <g ${base} stroke="${mezcla(c.oro, c.oroProfundo, 0.25)}" stroke-width="${f(2 * r)}">${forma}</g>
+      <g ${base} stroke="${c.oroBrillo}" stroke-opacity=".9" stroke-width="${f(0.9 * r)}" transform="translate(${f(-0.32 * r)} ${f(-0.38 * r)})">${forma}</g>`;
+  }
+
   /* ---------------- motivos ---------------- */
 
   // Concha / abanico central: gajos con borde festoneado
@@ -130,15 +203,7 @@
 
   /* ---------------- definiciones globales (degradados y filtros) ---------------- */
   function defs(c) {
-    const rv = Object.assign({ profundidad: 1, brillo: 1, patina: 1, colorPatina: "#3A2A12" }, c.relieve || {});
-    const R = {
-      ss: (4.8 * rv.profundidad).toFixed(2),
-      sc: (1.15 * rv.brillo).toFixed(2),
-      k2: (0.7 * rv.brillo).toFixed(2),
-      patina: Math.min(1, 0.55 * rv.patina).toFixed(2),
-      patinaColor: rv.colorPatina,
-      luz: c.oroBrillo || "#fff4d6"
-    };
+    RV = Object.assign({ profundidad: 1, brillo: 1, patina: 1, colorPatina: "#3A2A12" }, c.relieve || {});
     COLORES = c;
     const txt = `
 <svg class="svg-defs" width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
@@ -166,27 +231,12 @@
     <stop offset="1" stop-color="#2a1a05" stop-opacity=".42"/>
   </radialGradient>
 
-  <!-- Relieve metálico (oro antiguo): volumen, brillo en lo alto y pátina oscura en los bordes del tallado -->
-  <filter id="f-dorado" x="-15%" y="-15%" width="130%" height="130%" color-interpolation-filters="sRGB">
-    <feGaussianBlur in="SourceAlpha" stdDeviation="1.25" result="b"/>
-    <feSpecularLighting in="b" surfaceScale="${R.ss}" specularConstant="${R.sc}" specularExponent="22" lighting-color="${R.luz}" result="s">
-      <feDistantLight azimuth="235" elevation="34"/>
-    </feSpecularLighting>
-    <feComposite in="s" in2="SourceAlpha" operator="in" result="s2"/>
-    <feDiffuseLighting in="b" surfaceScale="${R.ss}" diffuseConstant="1" lighting-color="#ffffff" result="d">
-      <feDistantLight azimuth="235" elevation="44"/>
-    </feDiffuseLighting>
-    <feComposite in="SourceGraphic" in2="d" operator="arithmetic" k1="1.34" k2="0" k3="0" k4="0" result="sh"/>
-    <feComposite in="s2" in2="sh" operator="arithmetic" k1="0" k2="${R.k2}" k3="1" k4="0" result="lit"/>
-    <feMorphology in="SourceAlpha" operator="erode" radius=".9" result="er"/>
-    <feComposite in="SourceAlpha" in2="er" operator="out" result="borde"/>
-    <feGaussianBlur in="borde" stdDeviation=".4" result="borde2"/>
-    <feFlood flood-color="${R.patinaColor}" flood-opacity="${R.patina}"/>
-    <feComposite in2="borde2" operator="in" result="pat"/>
-    <feMerge result="m"><feMergeNode in="lit"/><feMergeNode in="pat"/></feMerge>
-    <feComposite in="m" in2="SourceAlpha" operator="in" result="g"/>
-    <feDropShadow in="g" dx="0" dy="1.7" stdDeviation="1.35" flood-color="#2a1d09" flood-opacity=".45"/>
-  </filter>
+  <!-- Cuerpo de los ornamentos tallados: centro más claro y bordes con pátina (volumen sin filtros) -->
+  <radialGradient id="g-orn" cx=".46" cy=".42" r=".62">
+    <stop offset="0" stop-color="${mezcla(c.oroClaro, c.oroBrillo, 0.35)}"/>
+    <stop offset=".55" stop-color="${mezcla(c.oro, c.oroClaro, 0.4)}"/>
+    <stop offset="1" stop-color="${mezcla(c.oro, c.oroProfundo, 0.55)}"/>
+  </radialGradient>
 
   <!-- Lacre: mapa de alturas en escala de grises -> cera con volumen -->
   <filter id="f-lacre" x="-20%" y="-20%" width="140%" height="140%" color-interpolation-filters="sRGB">
@@ -263,24 +313,36 @@
   // Marco ovalado dorado con cresta, perlas y rosetas
   function frameOval(src, o) {
     o = Object.assign({ alt: "", sencillo: false, pos: "50% 35%" }, o || {});
-    const W = 400, H = 560, cx = 200, cy = 300, rx = 148, ry = 200;
-    const e = (dr, extra) => `<ellipse cx="${cx}" cy="${cy}" rx="${rx + dr}" ry="${ry + dr}" ${extra}/>`;
+    const W = 400, H = 560, cx = 200, cy = 300, rx = 148, ry = 200, F = 22;
+    const e = (dr, extra) => `<ellipse cx="${cx}" cy="${cy}" rx="${f(rx + dr)}" ry="${f(ry + dr)}" ${extra}/>`;
+    const s = o.sencillo ? 2.2 : 1.5;              // las sombras crecen cuando el marco se ve pequeño
     const crestTop = o.sencillo ? 0.62 : 1.05;
-    const dibujo = () => `
+    const dibujo = () => {
+      // Moldura: bandas concéntricas, cada una con la luz que le toca según su pendiente
+      const NB = 26;
+      let grads = "", aros = "";
+      for (let i = 0; i < NB; i++) {
+        const t = (i + 0.5) / NB, dr = F * (1 - t), sl = pendiente(t), Rx = rx + dr, Ry = ry + dr;
+        grads += `<linearGradient id="ov${i}" gradientUnits="userSpaceOnUse" x1="${f(cx + LHAT.x * Rx)}" y1="${f(cy + LHAT.y * Ry)}" x2="${f(cx - LHAT.x * Rx)}" y2="${f(cy - LHAT.y * Ry)}">${paradas((p) => rampa(luzEn(sl, 2 * p - 1)), 10)}</linearGradient>`;
+        aros += e(dr, `fill="none" stroke="url(#ov${i})" stroke-width="${f((F / NB) * 1.35)}"`);
+      }
+      grads += `<linearGradient id="ov-in" gradientUnits="userSpaceOnUse" x1="${f(cx + LHAT.x * rx)}" y1="${f(cy + LHAT.y * ry)}" x2="${f(cx - LHAT.x * rx)}" y2="${f(cy - LHAT.y * ry)}">
+        <stop offset="0" stop-color="#140c04" stop-opacity=".55"/><stop offset=".5" stop-color="#140c04" stop-opacity=".18"/><stop offset="1" stop-color="#140c04" stop-opacity=".06"/></linearGradient>`;
+      const sombra = [1, 2, 3].map((k) => e(F, `fill="none" stroke="#24180a" stroke-opacity=".09" stroke-width="${f(1.2 + k * 1.3)}" transform="translate(${f(0.5 * k * s)} ${f(0.8 * k * s)})"`)).join("");
+      const orn =
+        relieve(crestPaths({ shell: true }), `translate(${cx} ${cy - ry - F + 1}) scale(${crestTop})`, s, crestTop) +
+        relieve(crestPaths({ shell: !o.sencillo }), `translate(${cx} ${cy + ry + F - 1}) scale(${o.sencillo ? 0.5 : 0.72} -${o.sencillo ? 0.5 : 0.72})`, s, o.sencillo ? 0.5 : 0.72) +
+        (o.sencillo ? "" : relieve(rosette(15), `translate(${cx - rx - F + 1} ${cy})`, s, 1) + relieve(rosette(15), `translate(${cx + rx + F - 1} ${cy})`, s, 1));
+      return `<defs>${grads}</defs>
+  ${sombra}
   ${e(0, 'fill="url(#g-vineta)"')}
-  <g filter="url(#f-dorado)" fill="none">
-    ${e(21.5, `stroke="url(#g-oro)" stroke-width="1.4"`)}
-    ${e(15, 'style="stroke:var(--oro-profundo)" stroke-width="9"')}
-    ${e(15, 'stroke="url(#g-oro)" stroke-width="9" stroke-dasharray="1.7 2.1"')}
-    ${e(8, 'stroke="url(#g-oro)" stroke-width="5.5"')}
-    ${e(2.6, 'stroke="url(#g-oro-v)" stroke-width="4.2" stroke-linecap="round" stroke-dasharray="0 7.4"')}
-    ${e(-0.5, 'style="stroke:var(--oro-profundo)" stroke-width="1.6"')}
-  </g>
-  <g filter="url(#f-dorado)" fill="url(#g-oro)">
-    <g transform="translate(${cx} ${cy - ry - 21}) scale(${crestTop})">${crestPaths({ shell: true })}</g>
-    <g transform="translate(${cx} ${cy + ry + 21}) scale(${o.sencillo ? 0.5 : 0.72} -${o.sencillo ? 0.5 : 0.72})">${crestPaths({ shell: !o.sencillo })}</g>
-    ${o.sencillo ? "" : `<g transform="translate(${cx - rx - 21} ${cy})">${rosette(15)}</g><g transform="translate(${cx + rx + 21} ${cy})">${rosette(15)}</g>`}
-  </g>`;
+  ${e(-2.2, 'fill="none" stroke="url(#ov-in)" stroke-width="4.4"')}
+  ${aros}
+  ${e(F + 0.2, 'fill="none" stroke="#24180a" stroke-opacity=".45" stroke-width=".6"')}
+  ${e(0, 'fill="none" stroke="#24180a" stroke-opacity=".55" stroke-width=".8"')}
+  ${perlas(e(F * 0.195, ""), 1.55, 5.6, s)}
+  ${orn}`;
+    };
     const vb = [-10, -6, W + 20, H + 32];
     const url = comoImagen(o.sencillo ? "orn-oval-s" : "orn-oval", vb, dibujo);
     const svg = `<img class="marco-oval__svg" src="${url}" alt="" aria-hidden="true" decoding="async" style="inset:auto;left:${f(100 * vb[0] / W)}%;top:${f(100 * vb[1] / H)}%;width:${f(100 * vb[2] / W)}%;height:${f(100 * vb[3] / H)}%">`;
@@ -290,25 +352,20 @@
     </div>`;
   }
 
-  // Ondulado tallado sobre la cara del marco (una "cinta" serpenteante a lo largo de un lado)
-  function serpentina(x0, y0, x1, y1, amp, onda, w) {
-    const L = Math.hypot(x1 - x0, y1 - y0), n = Math.max(1, Math.round(L / onda));
-    const ux = (x1 - x0) / L, uy = (y1 - y0) / L, nx = -uy, ny = ux, pts = [];
-    for (let i = 0; i <= 80; i++) {
-      const t = i / 80, o = amp * Math.sin(t * n * Math.PI * 2);
-      pts.push({ x: x0 + ux * L * t + nx * o, y: y0 + uy * L * t + ny * o });
-    }
-    return taper(pts, (t) => w * (0.35 + 0.65 * Math.sin(Math.PI * t)));
+  /* Marco rectangular de oro antiguo (inspirado en marcos tallados reales).
+     Moldura limpia con toro, media caña y perlas; flores talladas en las esquinas y una cresta
+     discreta. W×H = medida exterior · M = ancho de la moldura · s = escala de sombras. */
+  const VARIANTES = {
+    retrato: { W: 400, H: 520, M: 42, s: 1.1, abajo: true, cresta: 1 },
+    foto: { W: 300, H: 392, M: 30, s: 1.8, abajo: true, cresta: 0.9 },
+    video: { W: 640, H: 380, M: 24, s: 2.3, abajo: false, cresta: 0.8 }
+  };
+  function rectGeometria(v) {
+    const u = v.M / 40, m = 3 * v.s + 2;
+    const P = { t: (46 * v.cresta - 12) * u + m, l: 10 * u + m, r: 10 * u + m, b: Math.max(10, v.abajo ? 46 * 0.7 - 12 : 0) * u + m };
+    return Object.assign({}, v, { u, P, vbW: v.W + P.l + P.r, vbH: v.H + P.t + P.b });
   }
-
-  /* Marco rectangular barroco (inspirado en marcos tallados de oro antiguo).
-     W×H = medida exterior del marco · M = ancho de la moldura · k = escala de los ornamentos.
-     Devuelve el SVG (reutilizado con <use>) y la posición de la ventana para la foto/video. */
-  function rectGeometria(W, H, M, k) {
-    const P = { t: 70 * k, l: 30 * k, r: 30 * k, b: 52 * k };
-    return { W, H, M, k, P, vbW: W + P.l + P.r, vbH: H + P.t + P.b };
-  }
-  // Ornamentos tallados "pesados" (rosas, acantos y volutas gruesas), como en los marcos de referencia
+  // Ornamentos tallados: rosa de pétalos dobles, hojas de acanto y una cresta con concha
   function rosaBarroca(r) {
     let d = "", d2 = "";
     for (let i = 0; i < 8; i++) {
@@ -320,83 +377,67 @@
     return `<path d="${d}"/><path d="${d2}"/><path d="${circ(0, 0, r * 0.24)}"/>`;
   }
   const swap = (d) => `<path d="${d}" transform="matrix(0 1 1 0 0 0)"/>`;
-  // Guirnalda de laurel tallada a lo largo de una línea
-  function laurel(x0, y0, x1, y1, paso, largo, ancho) {
-    const L = Math.hypot(x1 - x0, y1 - y0), ux = (x1 - x0) / L, uy = (y1 - y0) / L, nx = -uy, ny = ux;
-    const n = Math.max(2, Math.floor(L / paso));
-    let d = "";
-    for (let i = 0; i < n; i++) {
-      const t = (i + 0.5) / n, bx = x0 + ux * L * t, by = y0 + uy * L * t, lado = i % 2 ? 1 : -1;
-      const tip = { x: bx + ux * largo * 0.8 + nx * largo * 0.55 * lado, y: by + uy * largo * 0.8 + ny * largo * 0.55 * lado };
-      d += leaf({ x: bx, y: by }, tip, ancho, lado * ancho * 0.6);
-    }
-    return d + taper([{ x: x0, y: y0 }, { x: x1, y: y1 }], () => ancho * 0.28);
+  const mover = (markup, x, y) => markup.replace(/<path /g, `<path transform="translate(${f(x)} ${f(y)})" `);
+  // Esquina (unidades de una moldura de 40): hojas que corren por ambos lados y una rosa al centro
+  function esquinaFloral() {
+    const a = leaf({ x: 12, y: 10 }, { x: 64, y: 9 }, 5, -3) + circ(69, 9.2, 1.8) + circ(74, 9.4, 1.2);
+    const b = leaf({ x: 19, y: 17 }, { x: 47, y: 26 }, 3.3, 3);
+    const fuera = leaf({ x: 7, y: 7 }, { x: -7, y: -7 }, 4.4, 0) + leaf({ x: 5, y: 9 }, { x: -8, y: 3 }, 2.8, -1.2) + leaf({ x: 9, y: 5 }, { x: 3, y: -8 }, 2.8, 1.2);
+    return `<path d="${fuera}"/><path d="${a}"/>${swap(a)}<path d="${b}"/>${swap(b)}` + mover(rosaBarroca(13.5), 15, 15);
   }
-  function esquinaPesada() {
-    let e = "";
-    e += scrollArm({ x: 14, y: 4 }, { x: 46, y: -6 }, { x: 82, y: 0 }, { x: 100, y: 16 }, { r: 9, w: 5.2, s: 1, ball: 2.6 });
-    e += leaf({ x: 24, y: 2 }, { x: 74, y: -12 }, 7.5, -8);
-    e += leaf({ x: 48, y: 6 }, { x: 96, y: 4 }, 5, 6);
-    e += circ(110, 10, 2.5) + circ(117, 9, 1.7);
-    const fuera = leaf({ x: 0, y: 0 }, { x: -24, y: -24 }, 9, 0) + leaf({ x: 0, y: 0 }, { x: -30, y: -6 }, 6.5, -4) + leaf({ x: 0, y: 0 }, { x: -6, y: -30 }, 6.5, 4);
-    return `<path d="${fuera}"/><path d="${e}"/>${swap(e)}
-      <path d="${leaf({ x: 16, y: 16 }, { x: 46, y: 46 }, 7, 0)}"/>
-      <g transform="translate(6 6)">${rosaBarroca(24)}</g>`;
-  }
-  function cartelaSuperior() {
-    let h = "";
-    h += scrollArm({ x: -10, y: 2 }, { x: -32, y: -16 }, { x: -60, y: -24 }, { x: -76, y: -8 }, { r: 8, w: 5, s: -1, sweep: Math.PI * 1.6, ball: 2.4 });
-    h += leaf({ x: -20, y: 8 }, { x: -104, y: 14 }, 7.5, 8);
-    h += leaf({ x: -36, y: -16 }, { x: -58, y: -36 }, 4.6, -4);
-    h += circ(-112, 15, 2.4) + circ(-119, 16, 1.6);
-    return both(h) + `<path d="${shell(38, 11, 150)}"/>
-      <path d="${leaf({ x: 0, y: -40 }, { x: 0, y: -64 }, 6, 0)}${circ(0, -69, 3)}"/>
-      <g transform="translate(0 2)">${rosaBarroca(16)}</g>`;
-  }
-  function cartelaLateral() {
-    const l = leaf({ x: 0, y: -8 }, { x: 5, y: -60 }, 7, 7) + leaf({ x: 0, y: -22 }, { x: -18, y: -48 }, 4.5, -3);
-    return `<path d="${l}"/><path d="${l}" transform="scale(1 -1)"/><path d="${shell(22, 7, 120)}" transform="rotate(-90)"/>${rosaBarroca(15)}`;
+  function crestaMarco() {
+    const lado = leaf({ x: -7, y: 4 }, { x: -60, y: 10 }, 5.4, 6) + circ(-65, 11, 2) + circ(-70, 12, 1.3);
+    const alto = leaf({ x: -6, y: -4 }, { x: -36, y: -18 }, 3.8, -4);
+    return `<path d="${lado}"/>${mirror(lado)}<path d="${alto}"/>${mirror(alto)}
+      <path d="${shell(24, 9, 140)}" transform="translate(0 -3)"/>
+      <path d="${leaf({ x: 0, y: -29 }, { x: 0, y: -41 }, 3.2, 0)}${circ(0, -44, 2)}"/>` + mover(rosaBarroca(10.5), 0, 2);
   }
   function rectDibujo(g) {
-    const { W, H, M, k } = g, m = M / 54;
-    const ring = (inset, width, attrs) => `<rect x="${f(inset + width / 2)}" y="${f(inset + width / 2)}" width="${f(W - 2 * inset - width)}" height="${f(H - 2 * inset - width)}" stroke-width="${f(width)}" fill="none" ${attrs}/>`;
-    const c = 31 * m;                       // línea central de la cara principal
-    const ec = 120 * k, cs = 108 * k, cl = 64 * k;   // espacio que ocupan esquinas, cartela superior y laterales
-    const sp = (x0, y0, x1, y1) => laurel(x0, y0, x1, y1, 15 * m, 11 * m, 3.6 * m);
-    let ser = sp(ec, c, W / 2 - cs, c) + sp(W / 2 + cs, c, W - ec, c) + sp(ec, H - c, W / 2 - cs * 0.75, H - c) + sp(W / 2 + cs * 0.75, H - c, W - ec, H - c);
-    ser += sp(c, ec, c, H / 2 - cl) + sp(c, H / 2 + cl, c, H - ec) + sp(W - c, ec, W - c, H / 2 - cl) + sp(W - c, H / 2 + cl, W - c, H - ec);
-    const ci = 14 * m, esq = `<g>${esquinaPesada()}</g>`;
-    const pos = (x, y, sx, sy, sc) => `transform="translate(${f(x)} ${f(y)}) scale(${f(sx * sc)} ${f(sy * sc)})"`;
-    return `
-      <rect x="${f(M)}" y="${f(M)}" width="${f(W - 2 * M)}" height="${f(H - 2 * M)}" fill="url(#g-vineta-r)"/>
-      <g filter="url(#f-dorado)">
-        ${ring(0, 7 * m, 'stroke="url(#g-oro)"')}
-        ${ring(7 * m, 11 * m, 'style="stroke:var(--oro-profundo)"')}
-        ${ring(7 * m, 11 * m, 'stroke="url(#g-oro)" stroke-dasharray="2 2.4"')}
-        ${ring(18 * m, 25 * m, 'stroke="url(#g-oro)"')}
-        ${ring(43 * m, 3 * m, 'style="stroke:var(--oro-profundo)"')}
-        ${ring(46 * m, 4.4 * m, 'stroke="url(#g-oro-v)" stroke-linecap="round" stroke-dasharray="0 7"')}
-        ${ring(50.6 * m, 3.4 * m, 'style="stroke:var(--oro-profundo)"')}
-      </g>
-      <g filter="url(#f-dorado)" fill="url(#g-oro)">
-        <path d="${ser}"/>
-        <g ${pos(ci, ci, 1, 1, k)}>${esq}</g><g ${pos(W - ci, ci, -1, 1, k)}>${esq}</g>
-        <g ${pos(ci, H - ci, 1, -1, k)}>${esq}</g><g ${pos(W - ci, H - ci, -1, -1, k)}>${esq}</g>
-        <g ${pos(W / 2, 9 * m, 1, 1, 1.05 * k)}>${cartelaSuperior()}</g>
-        <g ${pos(W / 2, H - 9 * m, 1, -1, 0.72 * k)}>${cartelaSuperior()}</g>
-        <g ${pos(c, H / 2, 1, 1, 0.95 * k)}>${cartelaLateral()}</g>
-        <g ${pos(W - c, H / 2, -1, 1, 0.95 * k)}>${cartelaLateral()}</g>
-      </g>`;
+    const { W, H, M, u, s } = g;
+    const pt = (p) => f(p[0]) + " " + f(p[1]);
+    // Cuatro caras a inglete; cada una recibe la luz según hacia dónde mira
+    const lados = [
+      { id: "mt", p: [[0, 0], [W, 0], [W - M, M], [M, M]], a: [0, 0], b: [0, M], n: { x: 0, y: 1 } },
+      { id: "mb", p: [[0, H], [W, H], [W - M, H - M], [M, H - M]], a: [0, H], b: [0, H - M], n: { x: 0, y: -1 } },
+      { id: "ml", p: [[0, 0], [M, M], [M, H - M], [0, H]], a: [0, 0], b: [M, 0], n: { x: 1, y: 0 } },
+      { id: "mr", p: [[W, 0], [W - M, M], [W - M, H - M], [W, H]], a: [W, 0], b: [W - M, 0], n: { x: -1, y: 0 } }
+    ];
+    let grads = "", caras = "";
+    lados.forEach((L) => {
+      const nl = L.n.x * LHAT.x + L.n.y * LHAT.y;
+      grads += `<linearGradient id="${L.id}" gradientUnits="userSpaceOnUse" x1="${pt(L.a).replace(" ", '" y1="')}" x2="${pt(L.b).replace(" ", '" y2="')}">${paradas((t) => rampa(luzEn(pendiente(t), nl)), 64)}</linearGradient>`;
+      caras += `<path d="M${L.p.map(pt).join("L")}Z" fill="url(#${L.id})" stroke="url(#${L.id})" stroke-width=".4" stroke-linejoin="round"/>`;
+    });
+    // Sombra que la moldura proyecta sobre la foto (más marcada arriba e izquierda, de donde viene la luz)
+    const si = (id, x1, y1, x2, y2, op) => `<linearGradient id="${id}" gradientUnits="userSpaceOnUse" x1="${f(x1)}" y1="${f(y1)}" x2="${f(x2)}" y2="${f(y2)}"><stop offset="0" stop-color="#140c04" stop-opacity="${op}"/><stop offset="1" stop-color="#140c04" stop-opacity="0"/></linearGradient>`;
+    const hondo = M * 0.34;
+    grads += si("st", 0, M, 0, M + hondo, 0.55) + si("sl", M, 0, M + hondo, 0, 0.45) + si("sb", 0, H - M, 0, H - M - hondo * 0.6, 0.2) + si("sr", W - M, 0, W - M - hondo * 0.6, 0, 0.22);
+    const ancho = W - 2 * M, alto = H - 2 * M;
+    const internas = `<rect x="${f(M)}" y="${f(M)}" width="${f(ancho)}" height="${f(hondo)}" fill="url(#st)"/>
+      <rect x="${f(M)}" y="${f(M)}" width="${f(hondo)}" height="${f(alto)}" fill="url(#sl)"/>
+      <rect x="${f(M)}" y="${f(H - M - hondo * 0.6)}" width="${f(ancho)}" height="${f(hondo * 0.6)}" fill="url(#sb)"/>
+      <rect x="${f(W - M - hondo * 0.6)}" y="${f(M)}" width="${f(hondo * 0.6)}" height="${f(alto)}" fill="url(#sr)"/>`;
+    // Sombra del marco sobre el papel (difusa, hacia abajo a la derecha)
+    const sombra = [1, 2, 3].map((k) => `<rect width="${W}" height="${H}" fill="none" stroke="#24180a" stroke-opacity=".09" stroke-width="${f(1.2 + k * 1.4)}" transform="translate(${f(0.5 * k * s)} ${f(0.8 * k * s)})"/>`).join("");
+    const bi = M * 0.805, rb = M * 0.045;
+    const orn = (pos, sx, sy) => relieve(esquinaFloral(), `translate(${pos}) scale(${f(sx * u)} ${f(sy * u)})`, s, u);
+    return `<defs>${grads}</defs>
+      ${sombra}
+      <rect x="${f(M)}" y="${f(M)}" width="${f(ancho)}" height="${f(alto)}" fill="url(#g-vineta-r)"/>
+      ${internas}
+      ${caras}
+      <path d="M0 0L${f(M)} ${f(M)}M${W} 0L${f(W - M)} ${f(M)}M0 ${H}L${f(M)} ${f(H - M)}M${W} ${H}L${f(W - M)} ${f(H - M)}" stroke="#24180a" stroke-opacity=".3" stroke-width=".5"/>
+      <rect width="${W}" height="${H}" fill="none" stroke="#24180a" stroke-opacity=".45" stroke-width=".7"/>
+      <rect x="${f(M)}" y="${f(M)}" width="${f(ancho)}" height="${f(alto)}" fill="none" stroke="#140c04" stroke-opacity=".6" stroke-width=".8"/>
+      ${perlas(`<rect x="${f(bi)}" y="${f(bi)}" width="${f(W - 2 * bi)}" height="${f(H - 2 * bi)}"/>`, rb, rb * 2.75, s)}
+      ${relieve(crestaMarco(), `translate(${f(W / 2)} ${f(M * 0.3)}) scale(${f(u * g.cresta)})`, s, u * g.cresta)}
+      ${g.abajo ? relieve(crestaMarco(), `translate(${f(W / 2)} ${f(H - M * 0.3)}) scale(${f(u * 0.7)} ${f(-u * 0.7)})`, s, u * 0.7) : ""}
+      ${orn("0 0", 1, 1)}${orn(`${W} 0`, -1, 1)}${orn(`0 ${H}`, 1, -1)}${orn(`${W} ${H}`, -1, -1)}`;
   }
   // Variantes listas: retrato (portada), foto (capítulos) y video (16:9)
-  const VARIANTES = {
-    retrato: () => rectGeometria(400, 520, 54, 1),
-    foto: () => rectGeometria(300, 392, 40, 0.72),
-    video: () => rectGeometria(640, 395, 40, 0.74)
-  };
   function frameRect(contenido, o) {
     o = Object.assign({ variante: "retrato", clase: "" }, o || {});
-    const g = (VARIANTES[o.variante] || VARIANTES.retrato)();
+    const g = rectGeometria(VARIANTES[o.variante] || VARIANTES.retrato);
     const { W, H, M, P, vbW, vbH } = g;
     const pct = (v, t) => (100 * v / t).toFixed(3) + "%";
     const ventana = `left:${pct(P.l + M, vbW)};top:${pct(P.t + M, vbH)};width:${pct(W - 2 * M, vbW)};height:${pct(H - 2 * M, vbH)}`;
@@ -412,18 +453,17 @@
     return frameRect(imgMarco(src, o), { variante: o.variante || "retrato", clase: o.clase || "" });
   }
 
-  // Filigrana divisoria horizontal (dorada o en relieve)
+  // Filigrana divisoria horizontal (oro en relieve, sin filtros)
   function divider(cls) {
     const dibujo = () => {
-    let half = "";
-    half += scrollArm({ x: -10, y: 0 }, { x: -40, y: -2 }, { x: -70, y: -14 }, { x: -96, y: -6 }, { r: 7, w: 2.2, s: -1, ball: 1.2 });
-    half += scrollArm({ x: -12, y: 2 }, { x: -34, y: 10 }, { x: -56, y: 14 }, { x: -70, y: 6 }, { r: 4.6, w: 1.6, s: 1, ball: 1 });
-    half += leaf({ x: -60, y: -9 }, { x: -78, y: -24 }, 2.2, 3);
-    half += leaf({ x: -100, y: -4 }, { x: -132, y: 0 }, 1.6, -2);
-    half += circ(-138, 0, 1.3);
-    let d = both(half);
-    d += `<path d="${leaf({ x: 0, y: -2 }, { x: 0, y: -18 }, 3.2, 0)}${leaf({ x: 0, y: 2 }, { x: 0, y: 14 }, 2.6, 0)}${leaf({ x: -2, y: 0 }, { x: -12, y: 0 }, 2.2, 0)}${leaf({ x: 2, y: 0 }, { x: 12, y: 0 }, 2.2, 0)}${circ(0, 0, 2.6)}"/>`;
-    return `<g fill="url(#g-oro)" filter="url(#f-dorado)">${d}</g>`;
+      let half = "";
+      half += scrollArm({ x: -10, y: 0 }, { x: -40, y: -2 }, { x: -70, y: -14 }, { x: -96, y: -6 }, { r: 7, w: 2.2, s: -1, ball: 1.2 });
+      half += scrollArm({ x: -12, y: 2 }, { x: -34, y: 10 }, { x: -56, y: 14 }, { x: -70, y: 6 }, { r: 4.6, w: 1.6, s: 1, ball: 1 });
+      half += leaf({ x: -60, y: -9 }, { x: -78, y: -24 }, 2.2, 3);
+      half += leaf({ x: -100, y: -4 }, { x: -132, y: 0 }, 1.6, -2);
+      half += circ(-138, 0, 1.3);
+      const d = both(half) + `<path d="${leaf({ x: 0, y: -2 }, { x: 0, y: -18 }, 3.2, 0)}${leaf({ x: 0, y: 2 }, { x: 0, y: 14 }, 2.6, 0)}${leaf({ x: -2, y: 0 }, { x: -12, y: 0 }, 2.2, 0)}${leaf({ x: 2, y: 0 }, { x: 12, y: 0 }, 2.2, 0)}${circ(0, 0, 2.6)}"/>`;
+      return relieve(d, "translate(0 0)", 0.75, 1);
     };
     return `<img class="filigrana ${cls || ""}" src="${comoImagen("orn-div", [-145, -30, 290, 50], dibujo)}" alt="" aria-hidden="true" decoding="async" width="290" height="50">`;
   }

@@ -15,23 +15,26 @@
 
 window.INVITACION = {
 
-  /* ---------- Orden de las secciones (puedes moverlas o quitarlas) ---------- */
+  /* ---------- Orden de las secciones (puedes moverlas o quitarlas) ----------
+     Ordenadas por relevancia: primero lo que todo invitado necesita para hacer planes
+     (fecha, lugar, horario, vestimenta y confirmación); después los detalles prácticos y,
+     al final, la parte emotiva (historia, fotos y padres) para quien quiera disfrutarla. */
   orden: [
-    "hero",
+    "hero",          // nombres, fecha y accesos rápidos
+    "fecha",         // calendario, cuenta regresiva y "agregar a mi calendario"
+    "eventos",       // ceremonia y recepción con mapas
+    "itinerario",
+    "vestimenta",
+    "rsvp",          // confirmación de asistencia
+    "notas",
+    "hospedaje",
+    "regalos",
+    "interludio:0",
     "manifiesto",
     "historia",
-    "interludio:0",
     "padres",
-    "fecha",
-    "eventos",
-    "itinerario",
     "interludio:1",
-    "vestimenta",
     "galeria",
-    "regalos",
-    "hospedaje",
-    "notas",
-    "rsvp",
     "cierre"
   ],
 
@@ -113,6 +116,9 @@ window.INVITACION = {
     fondo: "assets/img/portada.avif",
     textoSuperior: "Una invitación para",
     instruccion: "Toca el sello para abrir",
+    // Si el invitado ya abrió la invitación en este dispositivo, durante estas horas entra directo
+    // (sin la animación del sobre). Al vencer, el sobre vuelve a aparecer. 0 = mostrar siempre.
+    recordarHoras: 24,
     colorSobre: "#F3ECE0",
     colorForro: "#E7DABF",
     colorListon: "#EEE6D6",
@@ -137,7 +143,9 @@ window.INVITACION = {
     posicionFoto: "50% 30%",   // qué parte de la foto se prioriza al recortar
     sobreTitulo: "Junto a nuestras familias",
     titulo: "Nos casamos",
-    frase: "y queremos compartir este día contigo"
+    frase: "y queremos compartir este día contigo",
+    // Accesos rápidos bajo la fecha, para quien solo busca lo esencial (false = ocultarlos)
+    atajos: true
   },
 
   /* ---------- Texto que se ilumina palabra por palabra al hacer scroll ---------- */
@@ -396,7 +404,8 @@ window.INVITACION = {
     sinInvitado: "Nos casamos",
     googleCal: "Google Calendar", appleCal: "Apple · Outlook",
     musicaOn: "Pausar música", musicaOff: "Activar música",
-    abrir: "Abrir la invitación"
+    abrir: "Abrir la invitación",
+    atajoFecha: "Fecha", atajoLugar: "Lugar", atajoRsvp: "Confirmar"
   },
 
   /* ---------- Pie de página ---------- */

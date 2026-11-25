@@ -139,8 +139,9 @@ img.sin-imagen { opacity: 0 !important; }
 
 /* ---------------- Revelado al hacer scroll ---------------- */
 [data-rev] {
-  opacity: 0; transform: translate3d(0, 34px, 0); filter: blur(7px);
-  transition: opacity 1.3s var(--suave), transform 1.3s var(--suave), filter 1.3s var(--suave);
+  /* Sin desenfoque: animar blur() sobre fotos y marcos grandes era de lo más caro en móvil */
+  opacity: 0; transform: translate3d(0, 34px, 0);
+  transition: opacity 1.3s var(--suave), transform 1.3s var(--suave);
   transition-delay: var(--d, 0s);
 }
 [data-rev="escala"] { transform: scale(.9); }
@@ -361,7 +362,9 @@ body:not(.bloqueado) .progreso { opacity: 1; }
 .hero { min-height: 100svh; padding-top: clamp(56px, 9vh, 90px); padding-bottom: clamp(70px, 11vh, 110px); }
 .hero__marco { width: min(92vw, calc(78vw * var(--m-hero, 1)), calc(380px * var(--m-hero, 1)), calc(52svh * var(--m-hero, 1))); margin: 0 auto .5em; }
 .hero__marco-par { transform: translate3d(0, calc(var(--p, 0) * 70px), 0); }
-.hero__marco--rect { width: min(92vw, calc(480px * var(--m-hero, 1)), calc(46svh * var(--m-hero, 1))); margin-bottom: .2em; }
+/* Marco rectangular: en móvil ocupa todo el ancho de la sección (casi de borde a borde) */
+.hero__marco--rect { width: calc(100% + 30px); margin: 0 -15px .2em; }
+.hero__marco--rect .hero__marco-par { max-width: calc(520px * var(--m-hero, 1)); margin: 0 auto; }
 .hero__nombres { margin: 0; font-weight: 400; display: flex; flex-direction: column; align-items: center; line-height: 1; }
 .hero__nombres .script { font-size: calc(clamp(3.6rem, 16vw, 7.2rem) * var(--t-nombres, 1)); }
 .hero__y { font-family: var(--f-texto); font-style: italic; font-size: calc(clamp(1.6rem, 6vw, 2.6rem) * var(--t-nombres, 1)); color: var(--oro); margin: -.18em 0 -.1em; opacity: 0; transition: opacity 1.4s 1.2s; }
@@ -370,6 +373,18 @@ body:not(.bloqueado) .progreso { opacity: 1; }
 .hero__fecha { font-family: var(--f-caps); font-size: calc(clamp(1.25rem, 4.6vw, 1.8rem) * var(--t-numeros, 1)); letter-spacing: .14em; margin: 0; color: var(--tinta); display: flex; justify-content: center; align-items: center; gap: .55em; }
 .hero__fecha i { font-style: normal; color: var(--oro); font-size: .7em; }
 .hero__frase { font-style: italic; color: var(--tinta-suave); margin: .7em 0 0; font-size: 1.1em; }
+/* Accesos rápidos (fecha · lugar · confirmar) para quien solo busca lo esencial */
+.atajos { display: flex; justify-content: center; flex-wrap: wrap; gap: 10px; margin: 1.6em auto 0; }
+.atajos__item {
+  display: inline-flex; align-items: center; gap: .55em; padding: .72em 1.15em .68em; border-radius: 999px;
+  font-family: var(--f-caps); font-size: calc(.62rem * var(--t-etiquetas, 1)); letter-spacing: .22em; text-transform: uppercase;
+  color: var(--oro-profundo); text-decoration: none; background: color-mix(in srgb, var(--papel) 70%, #fff);
+  border: 1px solid color-mix(in srgb, var(--oro) 55%, transparent); box-shadow: 0 6px 14px -10px rgba(60, 40, 15, .45);
+  transition: background .3s, color .3s;
+}
+.atajos__item .icono { width: 15px; height: 15px; flex: none; }
+.atajos__item span { padding-left: .22em; }
+.atajos__item:hover, .atajos__item:focus-visible { background: var(--oro-profundo); color: var(--papel); }
 .desliza { margin: clamp(26px, 5vh, 44px) auto 0; display: flex; flex-direction: column; align-items: center; gap: 10px; font-family: var(--f-caps); font-size: calc(.58rem * var(--t-etiquetas, 1)); letter-spacing: .4em; color: var(--oro-profundo); padding-left: .4em; }
 .desliza i { width: 1px; height: 46px; background: linear-gradient(var(--oro), transparent); position: relative; overflow: hidden; }
 .desliza i::after { content: ""; position: absolute; left: -1px; width: 3px; height: 12px; border-radius: 2px; background: var(--oro-profundo); animation: gota 2.2s var(--seda) infinite; }
@@ -397,7 +412,8 @@ body:not(.bloqueado) .progreso { opacity: 1; }
 /* Varias fotos: máximo 2 por fila (el tope del 50 % garantiza la cuadrícula aunque se agrande la escala) */
 .capitulo--varias .capitulo__foto { width: min(calc(50% - 7px), calc(250px * var(--m-capitulos, 1))); }
 /* Cada video ocupa su propia fila; en móvil llega casi al borde de la pantalla */
-.capitulo__video { flex: 0 0 min(calc(100% + 28px), calc((100% + 28px) * var(--m-videos, 1))); margin: 0 -14px; }
+/* Cada video ocupa su propia fila, a escala de las fotos (no más grande que el par de óvalos) */
+.capitulo__video { flex: 0 0 min(86%, calc(420px * var(--m-videos, 1))); margin: 6px auto 0; }
 .capitulo__fecha { display: block; font-family: var(--f-caps); font-size: calc(clamp(2.6rem, 10vw, 3.6rem) * var(--t-numeros, 1)); line-height: 1; letter-spacing: .08em; color: transparent; -webkit-text-stroke: 1px var(--oro); opacity: .9; margin-bottom: .1em; }
 .capitulo__titulo { font-size: calc(clamp(2.2rem, 8.5vw, 3.2rem) * var(--t-titulos, 1)); margin: 0 0 .25em; display: inline-block; }
 .capitulo__texto p { margin: 0 auto; max-width: 25em; color: var(--tinta-suave); }
@@ -420,7 +436,7 @@ body:not(.bloqueado) .progreso { opacity: 1; }
   .capitulo.capitulo--video { grid-template-columns: 1fr; row-gap: 46px; }
   .capitulo.capitulo--video .capitulo__medios, .capitulo.capitulo--video:nth-child(even) .capitulo__medios { order: 0; justify-self: center; width: min(100%, calc(920px * var(--m-videos, 1))); }
   .capitulo--video .capitulo__foto { width: min(calc(50% - 7px), calc(300px * var(--m-capitulos, 1))); }
-  .capitulo__video { flex: 0 0 100%; margin: 0; }
+  .capitulo__video { flex: 0 0 min(100%, calc(580px * var(--m-videos, 1))); margin: 6px auto 0; }
   .capitulo--video::after { top: -38px; }
   /* El texto va a un lado del hilo dorado (alternando), así la línea del tiempo no lo cruza */
   .capitulo.capitulo--video .capitulo__texto { order: 1; width: calc(50% - 45px); justify-self: end; text-align: left; }
@@ -675,7 +691,7 @@ body:not(.bloqueado) .progreso { opacity: 1; }
   .hero .contenedor > * { grid-column: 2; }
   .hero .contenedor > .etiqueta { grid-row: 1; align-self: end; }
   .hero__marco { grid-column: 1 !important; grid-row: 1 / span 8; width: min(100%, calc(400px * var(--m-hero, 1)), calc(66svh * var(--m-hero, 1))); margin: 0 auto; }
-  .hero__marco--rect { width: min(100%, calc(480px * var(--m-hero, 1)), calc(52svh * var(--m-hero, 1))); }
+  .hero__marco--rect { width: min(100%, calc(480px * var(--m-hero, 1)), calc(52svh * var(--m-hero, 1))); margin: 0 auto; }
   .hero .desliza { grid-column: 1 / -1; }
 }
 .portada.p-solapa .portada__para { opacity: 0; transform: translateY(-10px); transition: opacity .5s ease, transform .5s ease; }
